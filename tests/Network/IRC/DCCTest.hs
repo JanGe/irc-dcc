@@ -1,15 +1,13 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Network.IRC.DCCTest where
 
-import           Network.IRC.DCC
+import           Network.IRC.DCC.Internal
 
 import           Data.Attoparsec.ByteString.Char8 (IResult (Done, Fail), Parser,
                                                    endOfInput, maybeResult,
                                                    parse)
-import           Data.ByteString.Char8            (ByteString)
+import           Data.ByteString.Char8            (pack)
 import qualified Data.ByteString.UTF8             as UTF8 (fromString)
 import           Data.IP                          (IPv4, toIPv4)
 import           Path                             (mkRelFile)
@@ -27,105 +25,97 @@ spec = testSpec "DCC message serialization" $
             describe "[SUCCESS]" $ do
 
                 it "Min IPv4" $
-                   ("0" :: ByteString) ~> parseIpBE
+                   pack "0" ~> decodeIpBigEndian
                        `shouldParse` toIPv4 [0, 0, 0, 0]
 
                 it "Max IPv4" $
-                   ("4294967295" :: ByteString) ~> parseIpBE
+                   pack "4294967295" ~> decodeIpBigEndian
                        `shouldParse` toIPv4 [255, 255, 255, 255]
 
                 it "Local IPv4" $
-                   ("3232235521" :: ByteString) ~> parseIpBE
+                   pack "3232235521" ~> decodeIpBigEndian
                        `shouldParse` toIPv4 [192, 168, 0, 1]
 
                 it "Public IPv4" $
-                   ("134743044" :: ByteString) ~> parseIpBE
+                   pack "134743044" ~> decodeIpBigEndian
                        `shouldParse` toIPv4 [8, 8, 4, 4]
 
                 it "IPv4 at beginning of stream" $
-                   ("0abcd" :: ByteString) ~?> parseIpBE
-                       `leavesUnconsumed` "abcd"
+                   pack "0abcd" ~?> decodeIpBigEndian
+                       `leavesUnconsumed` pack "abcd"
 
             describe "[FAILURE]" $ do
 
                 it "Negative IPv4" $
-                   parseIpBE `shouldFailOn` ("-1" :: ByteString)
+                   decodeIpBigEndian `shouldFailOn` pack "-1"
 
                 it "Bigger than max IPv4" $
-                   parseIpBE `shouldFailOn` ("4294967296" :: ByteString)
+                   decodeIpBigEndian `shouldFailOn` pack "4294967296"
 
                 it "Max IPv4 with additional digit" $
-                   parseIpBE `shouldFailOn` ("42949672950" :: ByteString)
+                   decodeIpBigEndian `shouldFailOn` pack "42949672950"
 
                 it "Non-digits" $
-                   parseIpBE `shouldFailOn` ("abcd" :: ByteString)
+                   decodeIpBigEndian `shouldFailOn` pack "abcd"
 
                 it "When not at beginning of stream" $
-                   parseIpBE `shouldFailOn` (" 0" :: ByteString)
+                   decodeIpBigEndian `shouldFailOn` pack " 0"
 
         describe "File name" $ do
 
             describe "[SUCCESS]" $ do
 
-                it "File name without extension" $
-                    ("filename" :: ByteString) ~> parseFileName
+                it "Without extension" $
+                    pack "filename" ~> decodeFileName
                         `shouldParse` $(mkRelFile "filename")
 
-                it "File name with extension" $
-                    ("filename.txt" :: ByteString) ~> parseFileName
+                it "With extension" $
+                    pack "filename.txt" ~> decodeFileName
                         `shouldParse` $(mkRelFile "filename.txt")
 
-                it "Quoted file name with extension" $
-                    ("\"filename.txt\"" :: ByteString) ~> parseFileName
+                it "Quoted with extension" $
+                    pack "\"filename.txt\"" ~> decodeFileName
                         `shouldParse` $(mkRelFile "filename.txt")
 
-                it "Quoted file name with space" $
-                    ("\"file name.txt\"" :: ByteString) ~> parseFileName
+                it "Quoted with space" $
+                    pack "\"file name.txt\"" ~> decodeFileName
                         `shouldParse` $(mkRelFile "file name.txt")
 
-                it "UTF8 file name with em space" $
-                    UTF8.fromString "file\8195name.txt" ~> parseFileName
+                it "UTF8 with em space" $
+                    UTF8.fromString "file\8195name.txt" ~> decodeFileName
                         `shouldParse` $(mkRelFile "file\8195name.txt")
 
-                it "UTF8 file name with skin tone modifier" $
-                    UTF8.fromString "\128110\127997" ~> parseFileName
+                it "UTF8 with skin tone modifier" $
+                    UTF8.fromString "\128110\127997" ~> decodeFileName
                         `shouldParse` $(mkRelFile "\128110\127997")
 
-                it "Quoted UTF8 file name with space" $
-                    UTF8.fromString "\"file\8195 name.txt\"" ~> parseFileName
+                it "Quoted UTF8 with space" $
+                    UTF8.fromString "\"file\8195 name.txt\"" ~> decodeFileName
                         `shouldParse` $(mkRelFile "file\8195 name.txt")
 
-                -- Currently only works when built on UNIX, see
-                -- https://github.com/haskell/filepath/issues/13
-                it "File name from absoulte unix path" $
-                    ("/home/user/filename.txt" :: ByteString) ~> parseFileName
+                it "From absolute unix path" $
+                    pack "/home/user/filename.txt" ~> decodeFileName
                         `shouldParse` $(mkRelFile "filename.txt")
 
--- TODO Enable when https://github.com/haskell/filepath/issues/13
---      was fixed
+                it "From quoted absolute unix path" $
+                    pack "\"/home/user/filename.txt\"" ~> decodeFileName
+                        `shouldParse` $(mkRelFile "filename.txt")
+
+                it "At beginning of stream" $
+                    pack "filename 122350" ~?> decodeFileName
+                        `leavesUnconsumed` pack " 122350"
+
+-- TODO Not sure exactly what to do with this yet. On Unix the whole thing
+--      could be a file name, while on windows it is obviously an absolute path
 --                 it "File name from absoulte unix path" $
---                     ("c:\\Users\\user\\filename.txt" :: ByteString) ~> parseFileName
+--                     ("c:\\Users\\user\\filename.txt" ~> parseFileName
 --                         `shouldParse` $(mkRelFile "filename.txt")
 
             describe "[FAILURE]" $ do
 
                 it "ASCII filename with space" $
-                    ("file name.txt" :: ByteString) ~?> parseFileName
-                        `leavesUnconsumed` " name.txt"
+                    pack "file name.txt" ~?> decodeFileName
+                        `leavesUnconsumed` pack " name.txt"
 
---         describe "Parse file name" $ do
---             success parseFileName
---                 [ ("filename.txt", $(mkRelFile "filename.txt"))
---                 , ("\"filename.txt\"", $(mkRelFile "filename.txt"))
---                 , (UTF8.fromString "\128110\127997", $(mkRelFile "\128110\127997"))
---                 , ("<a href>", $(mkRelFile "<a"))
---                 , ("c:\\", $(mkRelFile "c:\\"))
---                 , ("!@#$%^&*()`~", $(mkRelFile "!@#$%^&*()`~"))
---                 , (UTF8.fromString "田中さんにあげて下さい", $(mkRelFile "田中さんにあげて下さい"))
---                 , ("\000\000\000", $(mkRelFile "\000\000\000"))
---                 , ("\r\nbla.txt", $(mkRelFile "\r\nbla.txt"))
---                 ]
---             failure parseFileName
---                     [ "/"
---                     , "bla\ETXbla"
---                     ]
+                it "Not at beginning of stream" $
+                    decodeFileName `shouldFailOn` pack " filename"
