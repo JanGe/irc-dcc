@@ -1,4 +1,4 @@
-module Network.Socket.Extended
+module Network.Socket.ByteString.Extended
   ( module Network.Socket
   , module Network.Socket.ByteString
   , withActiveSocket
@@ -49,4 +49,3 @@ withPassiveSocket i onListen onConnected = do
       _ -> throwE ( "Timeout when waiting for other party to connect on port "
                  ++ show p ++ "…\n")
     liftIO $ sClose sock
-
