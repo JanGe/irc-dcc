@@ -6,17 +6,17 @@ module Network.IRC.DCC.FileTransfer
 import           Network.IRC.DCC.Internal
 
 import           Control.Error
-import           Control.Monad              (unless)
-import           Data.Binary.Put            (putWord32be, runPut)
-import           Data.ByteString.Char8      (ByteString, length, null)
-import qualified Data.ByteString.Lazy.Char8 as Lazy (toStrict)
-import           Network.Socket.Extended
-import           Path                       (File, Path, Rel, fromRelFile)
-import           Prelude                    hiding (length, null)
-import           System.IO                  (BufferMode (NoBuffering),
-                                             IOMode (WriteMode, AppendMode))
-import           System.IO.Streams          (OutputStream, withFileAsOutputExt,
-                                             write)
+import           Control.Monad                      (unless)
+import           Data.Binary.Put                    (putWord32be, runPut)
+import           Data.ByteString.Char8              (ByteString, length, null)
+import qualified Data.ByteString.Lazy.Char8         as Lazy (toStrict)
+import           Network.Socket.ByteString.Extended
+import           Path                               (File, Path, Rel,
+                                                     fromRelFile)
+import           Prelude                            hiding (length, null)
+import           System.IO                          (BufferMode (NoBuffering), IOMode (WriteMode, AppendMode))
+import           System.IO.Streams                  (OutputStream,
+                                                     withFileAsOutputExt, write)
 
 type Output = OutputStream ByteString
 
