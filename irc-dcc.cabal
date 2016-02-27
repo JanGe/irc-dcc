@@ -1,6 +1,6 @@
 name:                 irc-dcc
 version:              1.0.0
-synopsis:             A DCC message parser and helper library for IRC clients
+synopsis:             A DCC message decoding and helper library for IRC clients
 description:          DCC (Direct Client-to-Client) is an IRC sub-protocol for
                       establishing and maintaining direct connections to
                       exchange messages and files.
