@@ -23,7 +23,7 @@ library
   exposed-modules:      Network.IRC.DCC
                       , Network.IRC.DCC.FileTransfer
   other-modules:        Network.IRC.DCC.Internal
-                      , Network.Socket.Extended
+                      , Network.Socket.ByteString.Extended
   -- other-extensions:
   build-depends:        base >= 4.7 && < 5
                       , attoparsec
