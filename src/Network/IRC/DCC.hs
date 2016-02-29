@@ -1,10 +1,10 @@
 module Network.IRC.DCC (
   -- * Types
-  -- ** DCC
+  -- ** DCC service
     Service(..)
-  -- ** DCC CHAT
+  -- ** Messaging commands (DCC CHAT)
   , ChatProtocol(..)
-  -- ** DCC SEND
+  -- ** File Transfer commands (DCC SEND)
   , Offer(..)
   , TryResume(..)
   , AcceptResume(..)
@@ -14,19 +14,16 @@ module Network.IRC.DCC (
   , FileMetadata(..)
   , Token(..)
   , FileOffset
-  -- ** CTCP message parsing
+  -- * DCC command parsing
   , runParser
-  , decodeOffer
-  , encodeOffer
+  , decodeService
+  , encodeService
   , decodeTryResume
   , encodeTryResume
   , decodeAcceptResume
   , encodeAcceptResume
   , decodeOfferSink
   , encodeOfferSink
-  , fileMetadata
-  , fileName
-  , fileSize
   ) where
 
 import Network.IRC.DCC.Internal

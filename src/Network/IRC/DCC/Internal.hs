@@ -19,33 +19,55 @@ import           Path                             (File, Path, Rel, filename,
                                                    fromRelFile, parseAbsFile,
                                                    parseRelFile)
 
-data Service = Messaging
-             | FileTransfer
-               deriving (Eq, Show)
+-- | Type of DCC service offered
+data Service
+  -- | Offer chat session
+  = Messaging ChatProtocol
+  -- | Offer file transfer
+  | FileTransfer Offer
+    deriving (Eq, Show)
 
-data ChatProtocol = Chat IPv4 PortNumber
-                  | Whiteboard IPv4 PortNumber
-                    deriving (Eq, Show)
+-- | Type of DCC chat service
+data ChatProtocol
+  -- | Plain text messages exchange
+  = Chat IPv4 PortNumber
+  -- | Drawing commands exchange
+  | Whiteboard IPv4 PortNumber
+    deriving (Eq, Show)
 
+-- | Signal intent to close DCC chat connection
+data CloseChat = CloseChat
+
+-- | DCC file transfer instructions
 data Offer = Offer TransferType FileMetadata
              deriving (Eq, Show)
 
+-- | Signal intent to resume DCC file transfer at specific position
 data TryResume = TryResume TransferType FileMetadata FileOffset
                  deriving (Eq, Show)
 
+-- | Signal acceptance to resume DCC file transfer at specific position
 data AcceptResume = AcceptResume TransferType FileMetadata FileOffset
                     deriving (Eq, Show)
 
+-- | Signal readiness to accept a connection
 data OfferSink = OfferSink TransferType FileMetadata IPv4 PortNumber
                  deriving (Eq, Show)
 
-data TransferType = Active IPv4 PortNumber
-                  | Passive IPv4 Token
+-- | Type of a DCC file transfer connection
+data TransferType
+  -- | Connection where the owner of the file offers a socket to connect to
+  = Active IPv4 PortNumber
+  -- | Connection where the recipient of the file offers a socket to connect to
+  | Passive IPv4 Token
+    deriving (Eq, Show)
+
+-- | Properties of the file to be transfered
+data FileMetadata = FileMetadata { fileName :: Path Rel File
+                                 , fileSize :: FileOffset }
                     deriving (Eq, Show)
 
-data FileMetadata = FileMetadata (Path Rel File) FileOffset
-                    deriving (Eq, Show)
-
+-- | An identifier for knowing which negotiation a request belongs to
 data Token = Token ByteString
              deriving (Eq, Show)
 
@@ -54,39 +76,91 @@ type FileOffset = Word64
 runParser :: Parser a -> CTCPByteString -> Either String a
 runParser p = parseOnly p . decodeCTCP
 
-decodeOffer :: Parser Offer
-decodeOffer = do "DCC SEND"
-                 space
-                 fn <- decodeFileName
-                 space
-                 i <- decodeIpBigEndian
-                 space
-                 choice [ do p <- decodeTcpPort
-                             space
-                             fs <- decodeFileOffset
-                             endOfInput
-                             return (Offer (Active i p)
-                                           (FileMetadata fn fs))
-                        , do "0"
-                             space
-                             fs <- decodeFileOffset
-                             space
-                             t <- decodeToken
-                             endOfInput
-                             return (Offer (Passive i t)
-                                           (FileMetadata fn fs))
-                        ]
+decodeService :: Parser Service
+decodeService = do "DCC"
+                   space
+                   choice [ do "CHAT"
+                               space
+                               m <- decodeChatOffer
+                               return $ Messaging m
+                          , do "SEND"
+                               space
+                               o <- decodeFileOffer
+                               return $ FileTransfer o
+                          ]
 
-encodeOffer :: Offer -> CTCPByteString
-encodeOffer (Offer (Active i p) (FileMetadata fn fs)) = encodeCTCP $
-   concatSpace [ "DCC SEND"
-               , encodeFileName fn
+encodeService :: Service -> CTCPByteString
+encodeService (Messaging m) = encodeCTCP $
+    concatSpace [ "DCC CHAT"
+                , encodeChatOffer m ]
+encodeService (FileTransfer o) = encodeCTCP $
+    concatSpace [ "DCC SEND"
+                , encodeFileOffer o ]
+
+decodeChatClose :: Parser CloseChat
+decodeChatClose = do "DCC CLOSE"
+                     endOfInput
+                     return CloseChat
+
+encodeChatClose :: CloseChat -> CTCPByteString
+encodeChatClose _ = encodeCTCP "DCC CLOSE"
+
+decodeChatOffer :: Parser ChatProtocol
+decodeChatOffer = choice [ do "chat"
+                              space
+                              i <- decodeIpBigEndian
+                              space
+                              p <- decodeTcpPort
+                              endOfInput
+                              return $ Chat i p
+                         , do "wboard"
+                              space
+                              i <- decodeIpBigEndian
+                              space
+                              p <- decodeTcpPort
+                              endOfInput
+                              return $ Whiteboard i p
+                         ]
+
+encodeChatOffer :: ChatProtocol -> ByteString
+encodeChatOffer (Chat i p) =
+   concatSpace [ "chat"
+               , encodeIpBigEndian i
+               , encodeTcpPort p ]
+encodeChatOffer (Whiteboard i p) =
+   concatSpace [ "wboard"
+               , encodeIpBigEndian i
+               , encodeTcpPort p ]
+
+decodeFileOffer :: Parser Offer
+decodeFileOffer = do fn <- decodeFileName
+                     space
+                     i <- decodeIpBigEndian
+                     space
+                     choice [ do p <- decodeTcpPort
+                                 space
+                                 fs <- decodeFileOffset
+                                 endOfInput
+                                 return (Offer (Active i p)
+                                               (FileMetadata fn fs))
+                            , do "0"
+                                 space
+                                 fs <- decodeFileOffset
+                                 space
+                                 t <- decodeToken
+                                 endOfInput
+                                 return (Offer (Passive i t)
+                                               (FileMetadata fn fs))
+                            ]
+
+encodeFileOffer :: Offer -> ByteString
+encodeFileOffer (Offer (Active i p) (FileMetadata fn fs)) =
+   concatSpace [ encodeFileName fn
                , encodeIpBigEndian i
                , encodeTcpPort p
                , encodeFileOffset fs ]
-encodeOffer (Offer (Passive i t) (FileMetadata fn fs)) = encodeCTCP $
-   concatSpace [ "DCC SEND"
-               , encodeFileName fn
+encodeFileOffer (Offer (Passive i t) (FileMetadata fn fs)) =
+   concatSpace [ encodeFileName fn
                , encodeIpBigEndian i
                , "0"
                , encodeFileOffset fs
@@ -246,12 +320,3 @@ fromBigEndianIp = fromHostAddress . byteSwap32 . fromIntegral
 
 toBigEndianIp :: IPv4 -> Integer
 toBigEndianIp = fromIntegral . byteSwap32 . toHostAddress
-
-fileMetadata :: Offer -> FileMetadata
-fileMetadata (Offer _ f) = f
-
-fileName :: FileMetadata -> Path Rel File
-fileName (FileMetadata fn _) = fn
-
-fileSize :: FileMetadata -> FileOffset
-fileSize (FileMetadata _ fs) = fs

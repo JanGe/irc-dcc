@@ -1,3 +1,4 @@
+-- | Common functions simplyfing the use of "Network.Socket.ByteString"
 module Network.Socket.ByteString.Extended
   ( module Network.Socket
   , module Network.Socket.ByteString
@@ -13,7 +14,9 @@ import           Network.Socket            hiding (recv, recvFrom, send, sendTo)
 import           Network.Socket.ByteString
 import           System.Timeout
 
-withActiveSocket :: IPv4 -> PortNumber
+-- | Run functions on socket when connected and close socket afterwards
+withActiveSocket :: IPv4
+                 -> PortNumber
                  -> (PortNumber -> ExceptT String IO ())
                  -> (Socket -> IO ())
                  -> ExceptT String IO ()
@@ -25,6 +28,9 @@ withActiveSocket i p onListen onConnected = do
     liftIO $ onConnected sock
     liftIO $ sClose sock
 
+{- | Run functions on listen socket when listening and when connected and close
+     socket afterwards
+-}
 withPassiveSocket :: IPv4
                   -> (PortNumber -> ExceptT String IO ())
                   -> (Socket -> IO ())
