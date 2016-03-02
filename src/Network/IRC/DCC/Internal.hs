@@ -76,23 +76,26 @@ type FileOffset = Word64
 class CtcpCommand a where
     encodeCtcp :: a -> CTCPByteString
 
+instance CtcpCommand ByteString where
+    encodeCtcp = encodeCTCP
+
 instance CtcpCommand OpenChat where
-    encodeCtcp = encodeCTCP . encodeChatOffer
+    encodeCtcp = encodeCtcp . encodeChatOffer
 
 instance CtcpCommand CloseChat where
-    encodeCtcp = encodeCTCP . encodeChatClose
+    encodeCtcp = encodeCtcp . encodeChatClose
 
 instance CtcpCommand OfferFile where
-    encodeCtcp = encodeCTCP . encodeOffer
+    encodeCtcp = encodeCtcp . encodeOffer
 
 instance CtcpCommand TryResumeFile where
-    encodeCtcp = encodeCTCP . encodeTryResume
+    encodeCtcp = encodeCtcp . encodeTryResume
 
 instance CtcpCommand AcceptResumeFile where
-    encodeCtcp = encodeCTCP . encodeAcceptResume
+    encodeCtcp = encodeCtcp . encodeAcceptResume
 
 instance CtcpCommand OfferFileSink where
-    encodeCtcp = encodeCTCP . encodeOfferSink
+    encodeCtcp = encodeCtcp . encodeOfferSink
 
 runParser :: Parser a -> CTCPByteString -> Either String a
 runParser p = parseOnly p . decodeCTCP
