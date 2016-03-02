@@ -21,19 +21,19 @@ import           System.IO.Streams                  (OutputStream,
 type Output = OutputStream ByteString
 
 acceptFile :: Integral a
-           => Offer
+           => OfferFile
            -> (PortNumber -> ExceptT String IO ())
            -> (a -> IO ())
            -> ExceptT String IO ()
-acceptFile (Offer tt f) =
+acceptFile (OfferFile tt f) =
     download (fileName f) WriteMode 0 tt
 
 resumeFile :: Integral a
-           => AcceptResume
+           => AcceptResumeFile
            -> (PortNumber -> ExceptT String IO ())
            -> (a -> IO ())
            -> ExceptT String IO ()
-resumeFile (AcceptResume tt f pos) =
+resumeFile (AcceptResumeFile tt f pos) =
     download (fileName f) AppendMode (fromIntegral pos) tt
 
 download :: Integral a

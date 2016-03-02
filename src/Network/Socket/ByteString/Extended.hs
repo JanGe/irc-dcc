@@ -28,7 +28,7 @@ withActiveSocket i p onListen onConnected = do
     liftIO $ onConnected sock
     liftIO $ sClose sock
 
-{- | Run functions on listen socket when listening and when connected and close
+{- | Run functions on passive socket when listening and when connected and close
      socket afterwards
 -}
 withPassiveSocket :: IPv4
