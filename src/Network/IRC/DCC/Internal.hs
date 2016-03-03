@@ -101,11 +101,8 @@ runParser :: Parser a -> CTCPByteString -> Either String a
 runParser p = parseOnly p . decodeCTCP
 
 decodeService :: Parser Service
-decodeService = choice [ do m <- decodeChatOffer
-                            return $ Messaging m
-                       , do o <- decodeFileOffer
-                            return $ FileTransfer o
-                       ]
+decodeService = Messaging <$> decodeChatOffer
+            <|> FileTransfer <$> decodeFileOffer
 
 encodeService :: Service -> ByteString
 encodeService (Messaging m) = encodeChatOffer m
