@@ -18,10 +18,11 @@ module Network.IRC.DCC (
   , FileOffset
   -- * DCC command parsing
   , runParser
-  , decodeService
-  , decodeTryResume
-  , decodeAcceptResume
-  , decodeOfferSink
+  , parseService
+  , parseCloseChat
+  , parseTryResumeFile
+  , parseAcceptResumeFile
+  , parseOfferFileSink
   ) where
 
 import Network.IRC.DCC.Internal

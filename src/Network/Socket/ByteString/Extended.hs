@@ -4,13 +4,17 @@ module Network.Socket.ByteString.Extended
   , module Network.Socket.ByteString
   , withActiveSocket
   , withPassiveSocket
+  , toNetworkByteOrder
   ) where
 
 import           Control.Error
-import           Control.Monad.IO.Class    (liftIO)
-import           Data.IP                   (IPv4, fromHostAddress,
-                                            toHostAddress)
-import           Network.Socket            hiding (recv, recvFrom, send, sendTo)
+import           Control.Monad.IO.Class     (liftIO)
+import           Data.Binary.Put            (putWord32be, runPut)
+import qualified Data.ByteString.Lazy.Char8 as Lazy (toStrict)
+import           Data.IP                    (IPv4, fromHostAddress,
+                                             toHostAddress)
+import           Network.Socket             hiding (recv, recvFrom, send,
+                                             sendTo)
 import           Network.Socket.ByteString
 import           System.Timeout
 
@@ -55,3 +59,6 @@ withPassiveSocket i onListen onConnected = do
       _ -> throwE ( "Timeout when waiting for other party to connect on port "
                  ++ show p ++ "…\n")
     liftIO $ sClose sock
+
+toNetworkByteOrder :: Integral a => a -> ByteString
+toNetworkByteOrder = Lazy.toStrict . runPut . putWord32be . fromIntegral

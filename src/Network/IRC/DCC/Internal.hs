@@ -73,6 +73,7 @@ data Token = Token ByteString
 
 type FileOffset = Word64
 
+-- | Class for types that can be sent as CTCP commands
 class CtcpCommand a where
     encodeCtcp :: a -> CTCPByteString
 
@@ -80,92 +81,90 @@ instance CtcpCommand ByteString where
     encodeCtcp = encodeCTCP
 
 instance CtcpCommand OpenChat where
-    encodeCtcp = encodeCtcp . encodeChatOffer
+    encodeCtcp = encodeCtcp . encodeOpenChat
 
 instance CtcpCommand CloseChat where
     encodeCtcp = encodeCtcp . encodeChatClose
 
 instance CtcpCommand OfferFile where
-    encodeCtcp = encodeCtcp . encodeOffer
+    encodeCtcp = encodeCtcp . encodeOfferFile
 
 instance CtcpCommand TryResumeFile where
-    encodeCtcp = encodeCtcp . encodeTryResume
+    encodeCtcp = encodeCtcp . encodeTryResumeFile
 
 instance CtcpCommand AcceptResumeFile where
     encodeCtcp = encodeCtcp . encodeAcceptResume
 
 instance CtcpCommand OfferFileSink where
-    encodeCtcp = encodeCtcp . encodeOfferSink
+    encodeCtcp = encodeCtcp . encodeOfferFileSink
 
 runParser :: Parser a -> CTCPByteString -> Either String a
 runParser p = parseOnly p . decodeCTCP
 
-decodeService :: Parser Service
-decodeService = Messaging <$> decodeChatOffer
-            <|> FileTransfer <$> decodeFileOffer
+parseService :: Parser Service
+parseService = Messaging <$> parseOpenChat
+           <|> FileTransfer <$> parseOfferFile
 
 encodeService :: Service -> ByteString
-encodeService (Messaging m) = encodeChatOffer m
-encodeService (FileTransfer o) = encodeOffer o
+encodeService (Messaging m) = encodeOpenChat m
+encodeService (FileTransfer o) = encodeOfferFile o
 
-decodeChatOffer :: Parser OpenChat
-decodeChatOffer = choice [ do "DCC CHAT chat "
-                              (i, p) <- decodeSocket
-                              endOfInput
-                              return $ Chat i p
-                         , do "DCC CHAT wboard "
-                              (i, p) <- decodeSocket
-                              endOfInput
-                              return $ Whiteboard i p
-                         ]
+parseOpenChat :: Parser OpenChat
+parseOpenChat = choice [ do "DCC CHAT chat "
+                            (i, p) <- parseSocket
+                            endOfInput
+                            return $ Chat i p
+                       , do "DCC CHAT wboard "
+                            (i, p) <- parseSocket
+                            endOfInput
+                            return $ Whiteboard i p
+                       ]
 
-encodeChatOffer :: OpenChat -> ByteString
-encodeChatOffer (Chat i p) = "DCC CHAT chat " <> encodeSocket i p
-encodeChatOffer (Whiteboard i p) = "DCC CHAT wboard " <> encodeSocket i p
+encodeOpenChat :: OpenChat -> ByteString
+encodeOpenChat (Chat i p) = "DCC CHAT chat " <> encodeSocket (i, p)
+encodeOpenChat (Whiteboard i p) = "DCC CHAT wboard " <> encodeSocket (i, p)
 
-decodeChatClose :: Parser CloseChat
-decodeChatClose = do "DCC CLOSE"
-                     endOfInput
-                     return CloseChat
+parseCloseChat :: Parser CloseChat
+parseCloseChat = do "DCC CLOSE"
+                    endOfInput
+                    return CloseChat
 
 encodeChatClose :: CloseChat -> ByteString
 encodeChatClose _ = "DCC CLOSE"
 
-decodeFileOffer :: Parser OfferFile
-decodeFileOffer = do "DCC SEND "
-                     fn <- decodeFileName
-                     space
-                     i <- decodeIpBigEndian
-                     space
-                     choice [ do p <- decodeTcpPort
-                                 fs <- choice [ do space
-                                                   fs <- decodeFileOffset
-                                                   return $ Just fs
-                                              , return Nothing
-                                              ]
-                                 endOfInput
-                                 return (OfferFile
-                                            (Active i p)
-                                            (FileMetadata fn fs))
-                            , do "0"
-                                 space
-                                 fs <- decodeFileOffset
-                                 space
-                                 t <- decodeToken
-                                 endOfInput
-                                 return (OfferFile
-                                            (Passive i t)
-                                            (FileMetadata fn (Just fs)))
-                            ]
+parseOfferFile :: Parser OfferFile
+parseOfferFile =
+    do "DCC SEND "
+       fn <- parseFileName
+       space
+       i <- parseIpBigEndian
+       space
+       choice [ do p <- parseTcpPort
+                   fs <- Just <$> (space *> parseFileOffset)
+                     <|> return Nothing
+                   endOfInput
+                   return (OfferFile
+                              (Active i p)
+                              (FileMetadata fn fs))
+              , do "0"
+                   space
+                   fs <- parseFileOffset
+                   space
+                   t <- parseToken
+                   endOfInput
+                   return (OfferFile
+                              (Passive i t)
+                              (FileMetadata fn (Just fs)))
+              ]
 
-encodeOffer :: OfferFile -> ByteString
-encodeOffer (OfferFile (Active i p) (FileMetadata fn fs)) =
+encodeOfferFile :: OfferFile -> ByteString
+encodeOfferFile (OfferFile (Active i p) (FileMetadata fn fs)) =
     "DCC SEND "
  <> encodeFileName fn
  <> " " <> encodeIpBigEndian i
  <> " " <> encodeTcpPort p
  <> appendSpacedIfJust (encodeFileOffset <$> fs)
-encodeOffer (OfferFile (Passive i t) (FileMetadata fn fs)) =
+encodeOfferFile (OfferFile (Passive i t) (FileMetadata fn fs)) =
     "DCC SEND "
  <> encodeFileName fn
  <> " " <> encodeIpBigEndian i
@@ -173,11 +172,11 @@ encodeOffer (OfferFile (Passive i t) (FileMetadata fn fs)) =
  <> appendSpacedIfJust (encodeFileOffset <$> fs)
  <> " " <> encodeToken t
 
-decodeTryResume :: OfferFile -> Parser TryResumeFile
-decodeTryResume (OfferFile tt f) =
+parseTryResumeFile :: OfferFile -> Parser TryResumeFile
+parseTryResumeFile (OfferFile tt f) =
     do "DCC RESUME"
        space
-       fn' <- decodeFileName
+       fn' <- parseFileName
        when (fn' /= fileName f) $
          fail "File name for resume didn't match file name in offer."
        space
@@ -185,11 +184,11 @@ decodeTryResume (OfferFile tt f) =
                 Active _ p -> do
                     string (encodeTcpPort p)
                     space
-                    decodeFileOffset
+                    parseFileOffset
                 Passive _ t -> do
                     "0"
                     space
-                    pos <- decodeFileOffset
+                    pos <- parseFileOffset
                     space
                     string (encodeToken t)
                     return pos
@@ -197,23 +196,23 @@ decodeTryResume (OfferFile tt f) =
        return (TryResumeFile tt f pos)
 
 
-encodeTryResume :: TryResumeFile -> ByteString
-encodeTryResume (TryResumeFile (Active _ p) (FileMetadata fn _) pos) =
+encodeTryResumeFile :: TryResumeFile -> ByteString
+encodeTryResumeFile (TryResumeFile (Active _ p) (FileMetadata fn _) pos) =
     "DCC RESUME "
  <> encodeFileName fn
  <> " " <> encodeTcpPort p
  <> " " <> encodeFileOffset pos
-encodeTryResume (TryResumeFile (Passive _ t) (FileMetadata fn _) pos) =
+encodeTryResumeFile (TryResumeFile (Passive _ t) (FileMetadata fn _) pos) =
     "DCC RESUME "
  <> encodeFileName fn
  <> " 0 "
  <> encodeFileOffset pos
  <> " " <> encodeToken t
 
-decodeAcceptResume :: TryResumeFile -> Parser AcceptResumeFile
-decodeAcceptResume (TryResumeFile tt f _) =
+parseAcceptResumeFile :: TryResumeFile -> Parser AcceptResumeFile
+parseAcceptResumeFile (TryResumeFile tt f _) =
     do "DCC ACCEPT "
-       fn' <- decodeFileName
+       fn' <- parseFileName
        when (fn' /= fileName f) $
          fail "File name for accepting resume didn't match file name in offer."
        space
@@ -221,11 +220,11 @@ decodeAcceptResume (TryResumeFile tt f _) =
                    Active _ p -> do
                        string (encodeTcpPort p)
                        space
-                       decodeFileOffset
+                       parseFileOffset
                    Passive _ t -> do
                        "0"
                        space
-                       ackPos <- decodeFileOffset
+                       ackPos <- parseFileOffset
                        space
                        string (encodeToken t)
                        return ackPos
@@ -245,71 +244,71 @@ encodeAcceptResume (AcceptResumeFile (Passive _ t) (FileMetadata fn _) pos) =
  <> encodeFileOffset pos
  <> " " <> encodeToken t
 
-decodeOfferSink :: AcceptResumeFile -> Parser (Maybe OfferFileSink)
-decodeOfferSink (AcceptResumeFile (Passive _ t) f _) =
+parseOfferFileSink :: AcceptResumeFile -> Parser (Maybe OfferFileSink)
+parseOfferFileSink (AcceptResumeFile (Passive _ t) f _) =
     do "DCC SEND "
-       fn <- decodeFileName
+       fn <- parseFileName
        when (fn /= fileName f) $
          fail "File name for accepting resume didn't match file name in offer."
        space
-       (i, p) <- decodeSocket
+       (i, p) <- parseSocket
        string (appendSpacedIfJust (encodeFileOffset <$> fileSize f))
        space
        string (encodeToken t)
        endOfInput
        return (Just (OfferFileSink t f i p))
-decodeOfferSink _ = return Nothing
+parseOfferFileSink _ = return Nothing
 
-encodeOfferSink :: OfferFileSink -> ByteString
-encodeOfferSink (OfferFileSink t (FileMetadata fn fs) i p) =
+encodeOfferFileSink :: OfferFileSink -> ByteString
+encodeOfferFileSink (OfferFileSink t (FileMetadata fn fs) i p) =
     "DCC SEND "
  <> encodeFileName fn
- <> " " <> encodeSocket i p
+ <> " " <> encodeSocket (i, p)
  <> appendSpacedIfJust (encodeFileOffset <$> fs)
  <> " " <> encodeToken t
 
-decodeSocket :: Parser (IPv4, PortNumber)
-decodeSocket =
-    do i <- decodeIpBigEndian
+parseSocket :: Parser (IPv4, PortNumber)
+parseSocket =
+    do i <- parseIpBigEndian
        space
-       p <- decodeTcpPort
+       p <- parseTcpPort
        return (i, p)
 
-encodeSocket :: IPv4 -> PortNumber -> ByteString
-encodeSocket i p = encodeIpBigEndian i <> " " <> encodeTcpPort p
+encodeSocket :: (IPv4, PortNumber) -> ByteString
+encodeSocket (i, p) = encodeIpBigEndian i <> " " <> encodeTcpPort p
 
-decodeFileName :: Parser (Path Rel File)
-decodeFileName = do name <- "\"" *> takeWhile1 (/= '"') <* "\""
-                        <|> takeWhile1 (/= ' ')
-                    case parseRelOrAbs (UTF8.toString name) of
-                      Nothing -> fail "Could not parse file name."
-                      Just path -> return path
+parseFileName :: Parser (Path Rel File)
+parseFileName = do name <- "\"" *> takeWhile1 (/= '"') <* "\""
+                       <|> takeWhile1 (/= ' ')
+                   case parseRelOrAbs (UTF8.toString name) of
+                     Nothing -> fail "Could not parse file name."
+                     Just path -> return path
   where parseRelOrAbs n = parseRelFile n
                       <|> filename <$> parseAbsFile n
 
 encodeFileName :: Path Rel File -> ByteString
 encodeFileName = pack . fromRelFile
 
-decodeIpBigEndian :: Parser IPv4
-decodeIpBigEndian = fromBigEndianIp <$> parseBoundedInteger 0 4294967295
+parseIpBigEndian :: Parser IPv4
+parseIpBigEndian = fromBigEndianIp <$> parseBoundedInteger 0 4294967295
 
 encodeIpBigEndian :: IPv4 -> ByteString
 encodeIpBigEndian = pack . show . toBigEndianIp
 
-decodeTcpPort :: Parser PortNumber
-decodeTcpPort = fromInteger <$> parseBoundedInteger 1 65535
+parseTcpPort :: Parser PortNumber
+parseTcpPort = fromInteger <$> parseBoundedInteger 1 65535
 
 encodeTcpPort :: PortNumber -> ByteString
 encodeTcpPort = pack . show
 
-decodeFileOffset :: Parser FileOffset
-decodeFileOffset = decimal
+parseFileOffset :: Parser FileOffset
+parseFileOffset = decimal
 
 encodeFileOffset :: FileOffset -> ByteString
 encodeFileOffset = pack . show
 
-decodeToken :: Parser Token
-decodeToken = Token <$> takeByteString
+parseToken :: Parser Token
+parseToken = Token <$> takeByteString
 
 encodeToken :: Token -> ByteString
 encodeToken (Token t) = t

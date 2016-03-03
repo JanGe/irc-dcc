@@ -7,9 +7,7 @@ import           Network.IRC.DCC.Internal
 
 import           Control.Error
 import           Control.Monad                      (unless)
-import           Data.Binary.Put                    (putWord32be, runPut)
 import           Data.ByteString.Char8              (ByteString, length, null)
-import qualified Data.ByteString.Lazy.Char8         as Lazy (toStrict)
 import           Network.Socket.ByteString.Extended
 import           Path                               (File, Path, Rel,
                                                      fromRelFile)
@@ -69,7 +67,3 @@ stream pos onChunk sock h =
 
 sendPosition :: Integral a => Socket -> a -> IO ()
 sendPosition sock = sendAll sock . toNetworkByteOrder
-
--- TODO Simplify
-toNetworkByteOrder :: Integral a => a -> ByteString
-toNetworkByteOrder = Lazy.toStrict . runPut . putWord32be . fromIntegral
