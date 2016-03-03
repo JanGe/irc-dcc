@@ -25,84 +25,84 @@ spec = testSpec "DCC message serialization" $
             describe "[SUCCESS]" $ do
 
                 it "Min IPv4" $
-                   pack "0" ~> decodeIpBigEndian
+                   pack "0" ~> parseIpBigEndian
                        `shouldParse` toIPv4 [0, 0, 0, 0]
 
                 it "Max IPv4" $
-                   pack "4294967295" ~> decodeIpBigEndian
+                   pack "4294967295" ~> parseIpBigEndian
                        `shouldParse` toIPv4 [255, 255, 255, 255]
 
                 it "Local IPv4" $
-                   pack "3232235521" ~> decodeIpBigEndian
+                   pack "3232235521" ~> parseIpBigEndian
                        `shouldParse` toIPv4 [192, 168, 0, 1]
 
                 it "Public IPv4" $
-                   pack "134743044" ~> decodeIpBigEndian
+                   pack "134743044" ~> parseIpBigEndian
                        `shouldParse` toIPv4 [8, 8, 4, 4]
 
                 it "IPv4 at beginning of stream" $
-                   pack "0abcd" ~?> decodeIpBigEndian
+                   pack "0abcd" ~?> parseIpBigEndian
                        `leavesUnconsumed` pack "abcd"
 
             describe "[FAILURE]" $ do
 
                 it "Negative IPv4" $
-                   decodeIpBigEndian `shouldFailOn` pack "-1"
+                   parseIpBigEndian `shouldFailOn` pack "-1"
 
                 it "Bigger than max IPv4" $
-                   decodeIpBigEndian `shouldFailOn` pack "4294967296"
+                   parseIpBigEndian `shouldFailOn` pack "4294967296"
 
                 it "Max IPv4 with additional digit" $
-                   decodeIpBigEndian `shouldFailOn` pack "42949672950"
+                   parseIpBigEndian `shouldFailOn` pack "42949672950"
 
                 it "Non-digits" $
-                   decodeIpBigEndian `shouldFailOn` pack "abcd"
+                   parseIpBigEndian `shouldFailOn` pack "abcd"
 
                 it "When not at beginning of stream" $
-                   decodeIpBigEndian `shouldFailOn` pack " 0"
+                   parseIpBigEndian `shouldFailOn` pack " 0"
 
         describe "File name" $ do
 
             describe "[SUCCESS]" $ do
 
                 it "Without extension" $
-                    pack "filename" ~> decodeFileName
+                    pack "filename" ~> parseFileName
                         `shouldParse` $(mkRelFile "filename")
 
                 it "With extension" $
-                    pack "filename.txt" ~> decodeFileName
+                    pack "filename.txt" ~> parseFileName
                         `shouldParse` $(mkRelFile "filename.txt")
 
                 it "Quoted with extension" $
-                    pack "\"filename.txt\"" ~> decodeFileName
+                    pack "\"filename.txt\"" ~> parseFileName
                         `shouldParse` $(mkRelFile "filename.txt")
 
                 it "Quoted with space" $
-                    pack "\"file name.txt\"" ~> decodeFileName
+                    pack "\"file name.txt\"" ~> parseFileName
                         `shouldParse` $(mkRelFile "file name.txt")
 
                 it "UTF8 with em space" $
-                    UTF8.fromString "file\8195name.txt" ~> decodeFileName
+                    UTF8.fromString "file\8195name.txt" ~> parseFileName
                         `shouldParse` $(mkRelFile "file\8195name.txt")
 
                 it "UTF8 with skin tone modifier" $
-                    UTF8.fromString "\128110\127997" ~> decodeFileName
+                    UTF8.fromString "\128110\127997" ~> parseFileName
                         `shouldParse` $(mkRelFile "\128110\127997")
 
                 it "Quoted UTF8 with space" $
-                    UTF8.fromString "\"file\8195 name.txt\"" ~> decodeFileName
+                    UTF8.fromString "\"file\8195 name.txt\"" ~> parseFileName
                         `shouldParse` $(mkRelFile "file\8195 name.txt")
 
                 it "From absolute unix path" $
-                    pack "/home/user/filename.txt" ~> decodeFileName
+                    pack "/home/user/filename.txt" ~> parseFileName
                         `shouldParse` $(mkRelFile "filename.txt")
 
                 it "From quoted absolute unix path" $
-                    pack "\"/home/user/filename.txt\"" ~> decodeFileName
+                    pack "\"/home/user/filename.txt\"" ~> parseFileName
                         `shouldParse` $(mkRelFile "filename.txt")
 
                 it "At beginning of stream" $
-                    pack "filename 122350" ~?> decodeFileName
+                    pack "filename 122350" ~?> parseFileName
                         `leavesUnconsumed` pack " 122350"
 
 -- TODO Not sure exactly what to do with this yet. On Unix the whole thing
@@ -114,8 +114,8 @@ spec = testSpec "DCC message serialization" $
             describe "[FAILURE]" $ do
 
                 it "ASCII filename with space" $
-                    pack "file name.txt" ~?> decodeFileName
+                    pack "file name.txt" ~?> parseFileName
                         `leavesUnconsumed` pack " name.txt"
 
                 it "Not at beginning of stream" $
-                    decodeFileName `shouldFailOn` pack " filename"
+                    parseFileName `shouldFailOn` pack " filename"
