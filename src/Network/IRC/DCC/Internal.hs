@@ -101,11 +101,9 @@ runParser :: Parser a -> CTCPByteString -> Either String a
 runParser p = parseOnly p . decodeCTCP
 
 decodeService :: Parser Service
-decodeService = choice [ do "DCC CHAT "
-                            m <- decodeChatOffer
+decodeService = choice [ do m <- decodeChatOffer
                             return $ Messaging m
-                       , do "DCC SEND "
-                            o <- decodeFileOffer
+                       , do o <- decodeFileOffer
                             return $ FileTransfer o
                        ]
 
@@ -114,11 +112,11 @@ encodeService (Messaging m) = encodeChatOffer m
 encodeService (FileTransfer o) = encodeOffer o
 
 decodeChatOffer :: Parser OpenChat
-decodeChatOffer = choice [ do "chat "
+decodeChatOffer = choice [ do "DCC CHAT chat "
                               (i, p) <- decodeSocket
                               endOfInput
                               return $ Chat i p
-                         , do "wboard "
+                         , do "DCC CHAT wboard "
                               (i, p) <- decodeSocket
                               endOfInput
                               return $ Whiteboard i p
@@ -137,7 +135,8 @@ encodeChatClose :: CloseChat -> ByteString
 encodeChatClose _ = "DCC CLOSE"
 
 decodeFileOffer :: Parser OfferFile
-decodeFileOffer = do fn <- decodeFileName
+decodeFileOffer = do "DCC SEND "
+                     fn <- decodeFileName
                      space
                      i <- decodeIpBigEndian
                      space
