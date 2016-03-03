@@ -1,3 +1,9 @@
+{-| Functions for receiving files.
+
+    Each chunk is acknowledged by sending the total sum of bytes received for a
+    file. See the
+    <http://www.irchelp.org/irchelp/rfc/ctcpspec.html CTCP specification>.
+-}
 module Network.IRC.DCC.FileTransfer
   ( acceptFile
   , resumeFile
@@ -16,20 +22,24 @@ import           System.IO                          (BufferMode (NoBuffering), I
 import           System.IO.Streams                  (OutputStream,
                                                      withFileAsOutputExt, write)
 
-type Output = OutputStream ByteString
-
+-- | Accept a DCC file offer
 acceptFile :: Integral a
            => OfferFile
            -> (PortNumber -> ExceptT String IO ())
+           -- ^ Callback when socket is ready
            -> (a -> IO ())
+           -- ^ Callback when a chunk of data was transfered
            -> ExceptT String IO ()
 acceptFile (OfferFile tt f) =
     download (fileName f) WriteMode 0 tt
 
+-- | Accept a DCC file offer for a partially downloaded file
 resumeFile :: Integral a
            => AcceptResumeFile
            -> (PortNumber -> ExceptT String IO ())
+           -- ^ Callback when socket is ready
            -> (a -> IO ())
+           -- ^ Callback when a chunk of data was transfered
            -> ExceptT String IO ()
 resumeFile (AcceptResumeFile tt f pos) =
     download (fileName f) AppendMode (fromIntegral pos) tt
@@ -53,7 +63,7 @@ stream :: Integral a
        => a
        -> (a -> IO ())
        -> Socket
-       -> Output
+       -> OutputStream ByteString
        -> IO ()
 stream pos onChunk sock h =
   do buf <- recv sock (4096 * 1024)

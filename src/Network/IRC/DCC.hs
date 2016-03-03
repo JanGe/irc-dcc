@@ -19,7 +19,9 @@ module Network.IRC.DCC (
   -- * DCC command parsing
   , runParser
   , parseService
+  , parseOpenChat
   , parseCloseChat
+  , parseOfferFile
   , parseTryResumeFile
   , parseAcceptResumeFile
   , parseOfferFileSink

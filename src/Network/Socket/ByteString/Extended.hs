@@ -23,7 +23,9 @@ import           System.Timeout
 withActiveSocket :: IPv4
                  -> PortNumber
                  -> (PortNumber -> ExceptT String IO ())
+                 -- ^ Callback when socket is ready
                  -> (Socket -> IO ())
+                 -- ^ Callback when socket is connected to server
                  -> ExceptT String IO ()
 withActiveSocket i p onListen onConnected = do
     liftIO $ return withSocketsDo
@@ -34,11 +36,13 @@ withActiveSocket i p onListen onConnected = do
     liftIO $ sClose sock
 
 {- | Run functions on passive socket when listening and when connected and close
-     socket afterwards
+     socket afterwards.
 -}
 withPassiveSocket :: IPv4
                   -> (PortNumber -> ExceptT String IO ())
+                  -- ^ Callback when socket is open and listening
                   -> (Socket -> IO ())
+                  -- ^ Callback when client connected to socket
                   -> ExceptT String IO ()
 withPassiveSocket i onListen onConnected = do
     liftIO $ return withSocketsDo
@@ -61,5 +65,6 @@ withPassiveSocket i onListen onConnected = do
                  ++ show p ++ "…\n")
     liftIO $ sClose sock
 
+-- | Converts numbers to a '32bit unsigned int' in network byte order.
 toNetworkByteOrder :: Integral a => a -> ByteString
 toNetworkByteOrder = Lazy.toStrict . runPut . putWord32be . fromIntegral
