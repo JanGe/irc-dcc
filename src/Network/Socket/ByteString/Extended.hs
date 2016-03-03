@@ -10,6 +10,7 @@ module Network.Socket.ByteString.Extended
 import           Control.Error
 import           Control.Monad.IO.Class     (liftIO)
 import           Data.Binary.Put            (putWord32be, runPut)
+import           Data.ByteString.Char8      (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as Lazy (toStrict)
 import           Data.IP                    (IPv4, fromHostAddress,
                                              toHostAddress)
