@@ -29,29 +29,69 @@ data Service
 
 -- | Type of DCC chat to open
 data OpenChat
-  -- | Text messages exchange
+  {-| Text messages exchange
+
+      > DCC CHAT chat <ip> <port>
+  -}
   = Chat IPv4 PortNumber
-  -- | Drawing commands exchange
+  {-| Drawing commands exchange
+
+      > DCC CHAT wboard <ip> <port>
+  -}
   | Whiteboard IPv4 PortNumber
   deriving (Eq, Show)
 
 -- | Signal intent to close DCC chat connection
-data CloseChat = CloseChat
+data CloseChat
+  -- | > DCC CLOSE
+  = CloseChat
 
 -- | DCC file transfer instructions
-data OfferFile = OfferFile TransferType FileMetadata
+data OfferFile
+  {-| DCC:
+
+      > DCC SEND <fileName> <ip> <port> (<fileSize>)
+
+      Reverse DCC:
+
+      > DCC SEND <fileName> <ip> 0 <fileSize> <token>
+  -}
+  = OfferFile TransferType FileMetadata
   deriving (Eq, Show)
 
 -- | Signal intent to resume DCC file transfer at specific position
-data TryResumeFile = TryResumeFile TransferType FileMetadata FileOffset
+data TryResumeFile
+  {-| DCC:
+
+      > DCC RESUME <fileName> <port> <position>
+
+      Reverse DCC:
+
+      > DCC RESUME <fileName> 0 <position> <token>
+    -}
+  = TryResumeFile TransferType FileMetadata FileOffset
   deriving (Eq, Show)
 
 -- | Signal acceptance to resume DCC file transfer at specific position
-data AcceptResumeFile = AcceptResumeFile TransferType FileMetadata FileOffset
+data AcceptResumeFile
+  {-| DCC:
+
+      > DCC ACCEPT <fileName> <port> <position>
+
+      Reverse DCC:
+
+      > DCC ACCEPT <fileName> 0 <position> <token>
+  -}
+  = AcceptResumeFile TransferType FileMetadata FileOffset
   deriving (Eq, Show)
 
--- | Signal readiness to accept a connection
-data OfferFileSink = OfferFileSink Token FileMetadata IPv4 PortNumber
+-- | Signal readiness to accept a connection (only Reverse DCC)
+data OfferFileSink
+  {-| Reverse DCC:
+
+      > DCC SEND <fileName> <ip> <port> <fileSize> <token>
+  -}
+  = OfferFileSink Token FileMetadata IPv4 PortNumber
   deriving (Eq, Show)
 
 -- | Type of a DCC file transfer connection

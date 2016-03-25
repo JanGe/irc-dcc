@@ -1,3 +1,13 @@
+{-| DCC command parsing and encoding module
+
+    Example of parsing an offer file command:
+
+    > runParser parseOfferFile ctcpMessage
+
+    Example of encoding an offer file command:
+
+    > encodeCtcp offerFile
+-}
 module Network.IRC.DCC (
   -- * Types
   -- ** DCC service
