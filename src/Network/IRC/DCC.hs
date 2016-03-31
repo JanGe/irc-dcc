@@ -1,4 +1,4 @@
-{-| DCC command parsing and encoding module
+{-| DCC command parsing and encoding module.
 
     Example of parsing an offer file command:
 

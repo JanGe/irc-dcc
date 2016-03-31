@@ -18,7 +18,7 @@ import           Network.Socket.ByteString.Extended
 import           Path                               (File, Path, Rel,
                                                      fromRelFile)
 import           Prelude                            hiding (length, null)
-import           System.IO                          (BufferMode (NoBuffering), IOMode (WriteMode, AppendMode))
+import           System.IO                          (BufferMode (NoBuffering), IOMode (AppendMode, WriteMode))
 import           System.IO.Streams                  (OutputStream,
                                                      withFileAsOutputExt, write)
 

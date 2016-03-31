@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
 module Network.IRC.DCC.Internal where
 
@@ -45,6 +46,7 @@ data OpenChat
 data CloseChat
   -- | > DCC CLOSE
   = CloseChat
+  deriving (Eq, Show)
 
 -- | DCC file transfer instructions
 data OfferFile
@@ -108,10 +110,14 @@ data FileMetadata = FileMetadata { fileName :: Path Rel File
   deriving (Eq, Show)
 
 -- | An identifier for knowing which negotiation a request belongs to
-data Token = Token ByteString
+newtype Token = Token ByteString
   deriving (Eq, Show)
 
-type FileOffset = Word64
+newtype FileOffset = FileOffset { toWord :: Word64 }
+  deriving (Eq, Ord, Num, Integral, Enum, Real, Bounded)
+
+instance Show FileOffset where
+  show = show . toWord
 
 -- | Class for types that can be sent as CTCP commands
 class CtcpCommand a where
@@ -342,10 +348,10 @@ encodeTcpPort :: PortNumber -> ByteString
 encodeTcpPort = pack . show
 
 parseFileOffset :: Parser FileOffset
-parseFileOffset = decimal
+parseFileOffset = FileOffset <$> decimal
 
 encodeFileOffset :: FileOffset -> ByteString
-encodeFileOffset = pack . show
+encodeFileOffset = pack . show . toWord
 
 parseToken :: Parser Token
 parseToken = Token <$> takeByteString
