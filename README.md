@@ -1,5 +1,7 @@
 ## irc-dcc - A DCC message parsing and helper library for IRC clients
 
+[![Build Status](https://travis-ci.org/JanGe/irc-dcc.svg?branch=master)](https://travis-ci.org/JanGe/irc-dcc)
+
 DCC (Direct Client-to-Client) is an IRC sub-protocol for establishing
 and maintaining direct connections to exchange messages and files.
 
