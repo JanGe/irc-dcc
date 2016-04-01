@@ -7,6 +7,11 @@ and maintaining direct connections to exchange messages and files.
 
 See http://www.irchelp.org/irchelp/rfc/ctcpspec.html for more details.
 
+### Supported Variants:
+
+* (Standard) DCC
+* Reverse DCC
+
 ## Usage
 
 1. Add `irc-dcc` to the `build-depends` section of your `.cabal` file.
@@ -24,4 +29,4 @@ on Hackage.
 ## Development
 
 1. Install [Stack](http://docs.haskellstack.org/en/stable/README/).
-2. Run `stack build`.
+1. Run `stack build`.
