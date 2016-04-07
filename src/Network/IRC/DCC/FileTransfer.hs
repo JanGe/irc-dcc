@@ -57,13 +57,13 @@ download :: Integral a
            -- ^ Callback when a chunk of data was transfered
          -> ReaderT (Maybe PortNumber) (ExceptT String IO) ()
 download fn mode pos tt onListen onChunk = do
-    maybeP <- ask
+    localPort <- ask
     lift $
-        withSocket tt maybeP onListen $
+        withSocket tt localPort onListen $
             withFileAsOutputExt (fromRelFile fn) mode NoBuffering .
                 stream pos onChunk
   where withSocket (Active i p) _ = withActiveSocket (Sink i p)
-        withSocket (Passive i _) maybeP = withPassiveSocket (Source i maybeP)
+        withSocket (Passive i _) p = withPassiveSocket (Source i p)
 
 stream :: Integral a
        => a
