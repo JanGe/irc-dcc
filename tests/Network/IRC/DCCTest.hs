@@ -4,18 +4,15 @@ module Network.IRC.DCCTest where
 
 import           Network.IRC.DCC.Internal
 
-import           Data.Attoparsec.ByteString.Char8 (IResult (Done, Fail), Parser,
-                                                   endOfInput, maybeResult,
-                                                   parse)
-import           Data.ByteString.Char8            (pack)
-import qualified Data.ByteString.UTF8             as UTF8 (fromString)
-import           Data.IP                          (IPv4, toIPv4)
-import           Path                             (mkRelFile)
+import           Data.ByteString.Char8    (pack)
+import qualified Data.ByteString.UTF8     as UTF8 (fromString)
+import           Data.IP                  (toIPv4)
+import           Path                     (mkRelFile)
 import           Test.Hspec.Attoparsec
-import           Test.Tasty                       (testGroup)
-import           Test.Tasty.Hspec                 (SpecWith, describe, it,
-                                                   testSpec)
+import           Test.Tasty               (TestTree)
+import           Test.Tasty.Hspec         (describe, it, testSpec)
 
+spec :: IO TestTree
 spec = testSpec "DCC message serialization" $
 
     describe "Parsing single elements" $ do
