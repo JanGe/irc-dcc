@@ -2,6 +2,8 @@
 module Network.Socket.ByteString.Extended
   ( module Network.Socket
   , module Network.Socket.ByteString
+  , Sink(..)
+  , Source(..)
   , withActiveSocket
   , withPassiveSocket
   , toNetworkByteOrder
@@ -19,15 +21,18 @@ import           Network.Socket             hiding (recv, recvFrom, send,
 import           Network.Socket.ByteString
 import           System.Timeout
 
+data Sink = Sink IPv4 PortNumber
+
+data Source = Source IPv4 (Maybe PortNumber)
+
 -- | Run functions on socket when connected and close socket afterwards
-withActiveSocket :: IPv4
-                 -> PortNumber
+withActiveSocket :: Sink
                  -> (PortNumber -> ExceptT String IO ())
                  -- ^ Callback when socket is ready
                  -> (Socket -> IO ())
                  -- ^ Callback when socket is connected to server
                  -> ExceptT String IO ()
-withActiveSocket i p onListen onConnected = do
+withActiveSocket (Sink i p) onListen onConnected = do
     liftIO $ return withSocketsDo
     sock <- liftIO $ socket AF_INET Stream defaultProtocol
     onListen p
@@ -38,17 +43,15 @@ withActiveSocket i p onListen onConnected = do
 {- | Run functions on passive socket when listening and when connected and close
      socket afterwards.
 -}
-withPassiveSocket :: IPv4
+withPassiveSocket :: Source
                   -> (PortNumber -> ExceptT String IO ())
                   -- ^ Callback when socket is open and listening
                   -> (Socket -> IO ())
                   -- ^ Callback when client connected to socket
                   -> ExceptT String IO ()
-withPassiveSocket i onListen onConnected = do
+withPassiveSocket (Source i maybeP) onListen onConnected = do
     liftIO $ return withSocketsDo
-    sock <- liftIO $ socket AF_INET Stream defaultProtocol
-    liftIO $ bind sock (SockAddrInet aNY_PORT iNADDR_ANY)
-    liftIO $ listen sock 1
+    sock <- liftIO $ openListenSocket (fromMaybe aNY_PORT maybeP)
     p <- liftIO $ socketPort sock
     onListen p
     accepted <- liftIO $ timeout 10000000 $ accept sock
@@ -60,10 +63,16 @@ withPassiveSocket i onListen onConnected = do
                           throwE ( "Expected connection from host "
                                 ++ show (fromHostAddress client)
                                 ++ ", not from " ++ show i ++". Aborting…\n" )
-
       _ -> throwE ( "Timeout when waiting for other party to connect on port "
                  ++ show p ++ "…\n")
     liftIO $ sClose sock
+
+openListenSocket :: PortNumber -> IO Socket
+openListenSocket p = do
+    sock <- socket AF_INET Stream defaultProtocol
+    bind sock (SockAddrInet p iNADDR_ANY)
+    listen sock 1
+    return sock
 
 -- | Converts numbers to a '32bit unsigned int' in network byte order.
 toNetworkByteOrder :: Integral a => a -> ByteString

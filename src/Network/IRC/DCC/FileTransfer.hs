@@ -13,6 +13,8 @@ import           Network.IRC.DCC.Internal
 
 import           Control.Error
 import           Control.Monad                      (unless)
+import           Control.Monad.Trans.Class          (lift)
+import           Control.Monad.Trans.Reader         (ReaderT, ask)
 import           Data.ByteString.Char8              (ByteString, length, null)
 import           Network.Socket.ByteString.Extended
 import           Path                               (File, Path, Rel,
@@ -29,7 +31,7 @@ acceptFile :: Integral a
            -- ^ Callback when socket is ready
            -> (a -> IO ())
            -- ^ Callback when a chunk of data was transfered
-           -> ExceptT String IO ()
+           -> ReaderT (Maybe PortNumber) (ExceptT String IO) ()
 acceptFile (OfferFile tt f) =
     download (fileName f) WriteMode 0 tt
 
@@ -40,7 +42,7 @@ resumeFile :: Integral a
            -- ^ Callback when socket is ready
            -> (a -> IO ())
            -- ^ Callback when a chunk of data was transfered
-           -> ExceptT String IO ()
+           -> ReaderT (Maybe PortNumber) (ExceptT String IO) ()
 resumeFile (AcceptResumeFile tt f pos) =
     download (fileName f) AppendMode (fromIntegral pos) tt
 
@@ -50,14 +52,18 @@ download :: Integral a
          -> a
          -> TransferType
          -> (PortNumber -> ExceptT String IO ())
+           -- ^ Callback when socket is ready
          -> (a -> IO ())
-         -> ExceptT String IO ()
-download fn mode pos tt onListen onChunk =
-    withSocket tt onListen $
-        toFile (fromRelFile fn) . stream pos onChunk
-  where withSocket (Active i p) = withActiveSocket i p
-        withSocket (Passive i _) = withPassiveSocket i
-        toFile f = withFileAsOutputExt f mode NoBuffering
+           -- ^ Callback when a chunk of data was transfered
+         -> ReaderT (Maybe PortNumber) (ExceptT String IO) ()
+download fn mode pos tt onListen onChunk = do
+    maybeP <- ask
+    lift $
+        withSocket tt maybeP onListen $
+            withFileAsOutputExt (fromRelFile fn) mode NoBuffering .
+                stream pos onChunk
+  where withSocket (Active i p) _ = withActiveSocket (Sink i p)
+        withSocket (Passive i _) maybeP = withPassiveSocket (Source i maybeP)
 
 stream :: Integral a
        => a
