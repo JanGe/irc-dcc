@@ -1,5 +1,3 @@
-module Main where
-
 import qualified Network.IRC.DCCTest as DCC
 import           Test.Tasty
 
