@@ -5,10 +5,12 @@ module Network.IRC.DCC.Internal where
 
 import           Control.Applicative
 import           Control.Monad                    (when)
-import           Data.Attoparsec.ByteString.Char8
+import           Data.Attoparsec.ByteString.Char8 (Parser, choice, decimal,
+                                                   endOfInput, parseOnly, space,
+                                                   takeByteString, takeWhile1)
 import           Data.Binary                      (byteSwap32)
-import           Data.ByteString.Char8            (ByteString, pack)
-import qualified Data.ByteString.UTF8             as UTF8 (toString)
+import           Data.ByteString.Char8            (ByteString, pack, unwords)
+import qualified Data.ByteString.UTF8             as UTF8 (fromString, toString)
 import           Data.IP                          (IPv4, fromHostAddress,
                                                    toHostAddress)
 import           Data.Monoid                      ((<>))
@@ -16,102 +18,276 @@ import           Data.Word                        (Word64)
 import           Network.IRC.CTCP                 (CTCPByteString, decodeCTCP,
                                                    encodeCTCP)
 import           Network.Socket                   (PortNumber)
-import           Path                             (File, Path, Rel, filename,
+import           Path                             (Abs, File, Path, Rel,
+                                                   filename, fromAbsFile,
                                                    fromRelFile, parseAbsFile,
                                                    parseRelFile)
+import           Prelude                          hiding (abs, unwords)
 
--- | Type of DCC service offered
-data Service
-  -- | Offer chat session
-  = Messaging OpenChat
-  -- | Offer file transfer
-  | FileTransfer OfferFile
-  deriving (Eq, Show)
+-- | Types that can be converted to CTCP commands
+class ToCtcp a where
+    toCtcp :: a -> CTCPByteString
 
--- | Type of DCC chat to open
-data OpenChat
+-- | Types that can be parsed from CTCP commands
+class FromCtcp a where
+    fromCtcp :: CTCPByteString -> Either String a
+
+parseCtcp :: Parser a -> CTCPByteString -> Either String a
+parseCtcp p = parseOnly p . decodeCTCP
+
+-- | Offer DCC chat session
+data DccChat
   {-| Text messages exchange
 
       > DCC CHAT chat <ip> <port>
   -}
-  = Chat IPv4 PortNumber
+  = Chat !IPv4 !PortNumber
   {-| Drawing commands exchange
 
       > DCC CHAT wboard <ip> <port>
   -}
-  | Whiteboard IPv4 PortNumber
+  | ChatWhiteboard !IPv4 !PortNumber
   deriving (Eq, Show)
+
+instance ToCtcp DccChat where
+    toCtcp (Chat ip port) = encodeCTCP $ unwords
+        [ "DCC CHAT chat"
+        , socketToBS (ip, port)
+        ]
+    toCtcp (ChatWhiteboard ip port) = encodeCTCP $ unwords
+        [ "DCC CHAT wboard"
+        , socketToBS (ip, port)
+        ]
+
+instance FromCtcp DccChat where
+    fromCtcp = parseCtcp $ choice
+        [ do "DCC CHAT chat"
+             space
+             (ip, port) <- socket
+             endOfInput
+             return $ Chat ip port
+        , do "DCC CHAT wboard"
+             space
+             (ip, port) <- socket
+             endOfInput
+             return $ ChatWhiteboard ip port
+        ]
 
 -- | Signal intent to close DCC chat connection
-data CloseChat
+data DccClose
   -- | > DCC CLOSE
-  = CloseChat
+  = Close
   deriving (Eq, Show)
 
--- | DCC file transfer instructions
-data OfferFile
-  {-| DCC:
+instance ToCtcp DccClose where
+    toCtcp Close = encodeCTCP "DCC CLOSE"
+
+instance FromCtcp DccClose where
+    fromCtcp = parseCtcp $ do
+        "DCC CLOSE"
+        endOfInput
+        return Close
+
+-- | Offer DCC file transfer
+data DccSend
+  {-| As part of the standard DCC protocol, sent by the server
 
       > DCC SEND <fileName> <ip> <port> (<fileSize>)
-
-      Reverse DCC:
+  -}
+  = Send FileName !IPv4 !PortNumber !(Maybe FileOffset)
+  {-| As part of the Reverse DCC protocol, sent by the server
 
       > DCC SEND <fileName> <ip> 0 <fileSize> <token>
   -}
-  = OfferFile TransferType FileMetadata
+  | SendReverseServer !FileName !IPv4 !FileOffset !Token
   deriving (Eq, Show)
+
+instance ToCtcp DccSend where
+    toCtcp (Send name ip port size) = encodeCTCP $ unwords
+        [ "DCC SEND"
+        , fileNameToBS name
+        , ipToBigEndianBS ip
+        , tcpPortToBS port ]
+        <> maybe "" ((" " <>) . fileOffsetToBS) size
+    toCtcp (SendReverseServer name ip size t) = encodeCTCP $ unwords
+        [ "DCC SEND"
+        , fileNameToBS name
+        , ipToBigEndianBS ip
+        , "0"
+        , fileOffsetToBS size
+        , tokenToBS t
+        ]
+
+instance FromCtcp DccSend where
+    fromCtcp = parseCtcp $ do
+        "DCC SEND"
+        space
+        name <- fileName
+        space
+        ip <- ipBigEndian
+        space
+        choice [ do port <- tcpPort
+                    size <- Just <$> (space *> fileOffset)
+                        <|> return Nothing
+                    endOfInput
+                    return $ Send name ip port size
+               , do "0"
+                    space
+                    size <- fileOffset
+                    space
+                    t <- token
+                    endOfInput
+                    return $ SendReverseServer name ip size t
+               ]
 
 -- | Signal intent to resume DCC file transfer at specific position
-data TryResumeFile
-  {-| DCC:
+data DccResume
+  {-| As part of the standard DCC protocol, sent by the client
 
       > DCC RESUME <fileName> <port> <position>
-
-      Reverse DCC:
+  -}
+  = Resume !FileName !PortNumber !FileOffset
+  {-| As part of the Reverse DCC protocol, sent by the client
 
       > DCC RESUME <fileName> 0 <position> <token>
-    -}
-  = TryResumeFile TransferType FileMetadata FileOffset
+  -}
+  | ResumeReverse !FileName !FileOffset !Token
   deriving (Eq, Show)
 
+instance ToCtcp DccResume where
+    toCtcp (Resume name port pos) = encodeCTCP $ unwords
+        [ "DCC RESUME"
+        , fileNameToBS name
+        , tcpPortToBS port
+        , fileOffsetToBS pos
+        ]
+    toCtcp (ResumeReverse name pos t) = encodeCTCP $ unwords
+        [ "DCC RESUME"
+        , fileNameToBS name
+        , "0"
+        , fileOffsetToBS pos
+        , tokenToBS t
+        ]
+
+instance FromCtcp DccResume where
+    fromCtcp = parseCtcp $ do
+        "DCC RESUME"
+        space
+        name <- fileName
+        space
+        choice [ do port <- tcpPort
+                    space
+                    pos <- fileOffset
+                    endOfInput
+                    return $ Resume name port pos
+               , do "0"
+                    space
+                    pos <- fileOffset
+                    space
+                    t <- token
+                    endOfInput
+                    return $ ResumeReverse name pos t
+               ]
+
 -- | Signal acceptance to resume DCC file transfer at specific position
-data AcceptResumeFile
-  {-| DCC:
+data DccAccept
+  {-| As part of the standard DCC protocol, sent by the server
 
       > DCC ACCEPT <fileName> <port> <position>
-
-      Reverse DCC:
+  -}
+  = Accept !FileName !PortNumber !FileOffset
+  {-| As part of the Reverse DCC protocol, sent by the server
 
       > DCC ACCEPT <fileName> 0 <position> <token>
   -}
-  = AcceptResumeFile TransferType FileMetadata FileOffset
+  | AcceptReverse !FileName !FileOffset !Token
   deriving (Eq, Show)
 
--- | Signal readiness to accept a connection (only Reverse DCC)
-data OfferFileSink
-  {-| Reverse DCC:
+instance ToCtcp DccAccept where
+    toCtcp (Accept name port pos) = encodeCTCP $ unwords
+        [ "DCC ACCEPT"
+        , fileNameToBS name
+        , tcpPortToBS port
+        , fileOffsetToBS pos
+        ]
+    toCtcp (AcceptReverse name pos t) = encodeCTCP $ unwords
+        [ "DCC ACCEPT"
+        , fileNameToBS name
+        , "0"
+        , fileOffsetToBS pos
+        , tokenToBS t
+        ]
+
+instance FromCtcp DccAccept where
+    fromCtcp = parseCtcp $ do
+        "DCC ACCEPT"
+        space
+        name <- fileName
+        space
+        choice [ do port <- tcpPort
+                    space
+                    pos <- fileOffset
+                    endOfInput
+                    return $ Accept name port pos
+               , do "0"
+                    space
+                    pos <- fileOffset
+                    space
+                    t <- token
+                    endOfInput
+                    return $ AcceptReverse name pos t
+               ]
+
+-- | Tell the server where to push to start a DCC file transfer
+--   and push data to the specified location.
+data DccSendReverseClient
+  {-| As part of the Reverse DCC protocol, sent by the client
 
       > DCC SEND <fileName> <ip> <port> <fileSize> <token>
   -}
-  = OfferFileSink Token FileMetadata IPv4 PortNumber
+  = SendReverseClient !FileName !IPv4 !PortNumber !FileOffset !Token
   deriving (Eq, Show)
 
--- | Type of a DCC file transfer connection
-data TransferType
-  -- | Connection where the owner of the file offers a socket to connect to
-  = Active IPv4 PortNumber
-  -- | Connection where the recipient of the file offers a socket to connect to
-  | Passive IPv4 Token
+instance ToCtcp DccSendReverseClient where
+  toCtcp (SendReverseClient name ip port size t) = encodeCTCP $ unwords
+      [ "DCC SEND"
+      , fileNameToBS name
+      , ipToBigEndianBS ip
+      , tcpPortToBS port
+      , fileOffsetToBS size
+      , tokenToBS t
+      ]
+
+instance FromCtcp DccSendReverseClient where
+  fromCtcp = parseCtcp $ do
+      "DCC SEND"
+      space
+      name <- fileName
+      space
+      ip <- ipBigEndian
+      space
+      port <- tcpPort
+      space
+      size <- fileOffset
+      space
+      t <- token
+      endOfInput
+      return $ SendReverseClient name ip port size t
+
+data FileName
+  = SimpleRelFn !(Path Rel File)
+  | SimpleAbsFn !(Path Abs File)
+  -- ^ A file name without spaces
+  | QuotedRelFn !(Path Rel File)
+  | QuotedAbsFn !(Path Abs File)
+  -- ^ A file name that can include spaces and will be quoted when serialized
   deriving (Eq, Show)
 
--- | Properties of a file
-data FileMetadata = FileMetadata { fileName :: Path Rel File
-                                 , fileSize :: Maybe FileOffset }
-  deriving (Eq, Show)
-
--- | An identifier for knowing which negotiation a request belongs to
-newtype Token = Token ByteString
-  deriving (Eq, Show)
+_fileName :: FileName -> Path Rel File
+_fileName (SimpleRelFn name) = name
+_fileName (SimpleAbsFn name) = filename name
+_fileName (QuotedRelFn name) = name
+_fileName (QuotedAbsFn name) = filename name
 
 newtype FileOffset = FileOffset { toWord :: Word64 }
   deriving (Eq, Ord, Num, Integral, Enum, Real, Bounded)
@@ -119,257 +295,71 @@ newtype FileOffset = FileOffset { toWord :: Word64 }
 instance Show FileOffset where
   show = show . toWord
 
--- | Class for types that can be sent as CTCP commands
-class CtcpCommand a where
-    encodeCtcp :: a -> CTCPByteString
+-- | An identifier for knowing which negotiation a request belongs to
+newtype Token = Token ByteString
+  deriving (Eq, Show)
 
-instance CtcpCommand ByteString where
-    encodeCtcp = encodeCTCP
-
-instance CtcpCommand OpenChat where
-    encodeCtcp = encodeCtcp . encodeOpenChat
-
-instance CtcpCommand CloseChat where
-    encodeCtcp = encodeCtcp . encodeChatClose
-
-instance CtcpCommand OfferFile where
-    encodeCtcp = encodeCtcp . encodeOfferFile
-
-instance CtcpCommand TryResumeFile where
-    encodeCtcp = encodeCtcp . encodeTryResumeFile
-
-instance CtcpCommand AcceptResumeFile where
-    encodeCtcp = encodeCtcp . encodeAcceptResume
-
-instance CtcpCommand OfferFileSink where
-    encodeCtcp = encodeCtcp . encodeOfferFileSink
-
-runParser :: Parser a -> CTCPByteString -> Either String a
-runParser p = parseOnly p . decodeCTCP
-
-parseService :: Parser Service
-parseService = Messaging <$> parseOpenChat
-           <|> FileTransfer <$> parseOfferFile
-
-encodeService :: Service -> ByteString
-encodeService (Messaging m) = encodeOpenChat m
-encodeService (FileTransfer o) = encodeOfferFile o
-
-parseOpenChat :: Parser OpenChat
-parseOpenChat = choice [ do "DCC CHAT chat "
-                            (i, p) <- parseSocket
-                            endOfInput
-                            return $ Chat i p
-                       , do "DCC CHAT wboard "
-                            (i, p) <- parseSocket
-                            endOfInput
-                            return $ Whiteboard i p
-                       ]
-
-encodeOpenChat :: OpenChat -> ByteString
-encodeOpenChat (Chat i p) = "DCC CHAT chat " <> encodeSocket (i, p)
-encodeOpenChat (Whiteboard i p) = "DCC CHAT wboard " <> encodeSocket (i, p)
-
-parseCloseChat :: Parser CloseChat
-parseCloseChat = do "DCC CLOSE"
-                    endOfInput
-                    return CloseChat
-
-encodeChatClose :: CloseChat -> ByteString
-encodeChatClose _ = "DCC CLOSE"
-
-parseOfferFile :: Parser OfferFile
-parseOfferFile =
-    do "DCC SEND "
-       fn <- parseFileName
+socket :: Parser (IPv4, PortNumber)
+socket =
+    do i <- ipBigEndian
        space
-       i <- parseIpBigEndian
-       space
-       choice [ do p <- parseTcpPort
-                   fs <- Just <$> (space *> parseFileOffset)
-                     <|> return Nothing
-                   endOfInput
-                   return (OfferFile
-                              (Active i p)
-                              (FileMetadata fn fs))
-              , do "0"
-                   space
-                   fs <- parseFileOffset
-                   space
-                   t <- parseToken
-                   endOfInput
-                   return (OfferFile
-                              (Passive i t)
-                              (FileMetadata fn (Just fs)))
-              ]
-
-encodeOfferFile :: OfferFile -> ByteString
-encodeOfferFile (OfferFile (Active i p) (FileMetadata fn fs)) =
-    "DCC SEND "
- <> encodeFileName fn
- <> " " <> encodeIpBigEndian i
- <> " " <> encodeTcpPort p
- <> appendSpacedIfJust (encodeFileOffset <$> fs)
-encodeOfferFile (OfferFile (Passive i t) (FileMetadata fn fs)) =
-    "DCC SEND "
- <> encodeFileName fn
- <> " " <> encodeIpBigEndian i
- <> " 0"
- <> appendSpacedIfJust (encodeFileOffset <$> fs)
- <> " " <> encodeToken t
-
-parseTryResumeFile :: OfferFile -> Parser TryResumeFile
-parseTryResumeFile (OfferFile tt f) =
-    do "DCC RESUME"
-       space
-       fn' <- parseFileName
-       when (fn' /= fileName f) $
-         fail "File name for resume didn't match file name in offer."
-       space
-       pos <- case tt of
-                Active _ p -> do
-                    string (encodeTcpPort p)
-                    space
-                    parseFileOffset
-                Passive _ t -> do
-                    "0"
-                    space
-                    pos <- parseFileOffset
-                    space
-                    string (encodeToken t)
-                    return pos
-       endOfInput
-       return (TryResumeFile tt f pos)
-
-
-encodeTryResumeFile :: TryResumeFile -> ByteString
-encodeTryResumeFile (TryResumeFile (Active _ p) (FileMetadata fn _) pos) =
-    "DCC RESUME "
- <> encodeFileName fn
- <> " " <> encodeTcpPort p
- <> " " <> encodeFileOffset pos
-encodeTryResumeFile (TryResumeFile (Passive _ t) (FileMetadata fn _) pos) =
-    "DCC RESUME "
- <> encodeFileName fn
- <> " 0 "
- <> encodeFileOffset pos
- <> " " <> encodeToken t
-
-parseAcceptResumeFile :: TryResumeFile -> Parser AcceptResumeFile
-parseAcceptResumeFile (TryResumeFile tt f _) =
-    do "DCC ACCEPT "
-       fn' <- parseFileName
-       when (fn' /= fileName f) $
-         fail "File name for accepting resume didn't match file name in offer."
-       space
-       ackPos <- case tt of
-                   Active _ p -> do
-                       string (encodeTcpPort p)
-                       space
-                       parseFileOffset
-                   Passive _ t -> do
-                       "0"
-                       space
-                       ackPos <- parseFileOffset
-                       space
-                       string (encodeToken t)
-                       return ackPos
-       endOfInput
-       return (AcceptResumeFile tt f ackPos)
-
-encodeAcceptResume :: AcceptResumeFile -> ByteString
-encodeAcceptResume (AcceptResumeFile (Active _ p) (FileMetadata fn _) pos) =
-    "DCC ACCEPT "
- <> encodeFileName fn
- <> " " <> encodeTcpPort p
- <> " " <> encodeFileOffset pos
-encodeAcceptResume (AcceptResumeFile (Passive _ t) (FileMetadata fn _) pos) =
-    "DCC ACCEPT "
- <> encodeFileName fn
- <> " 0 "
- <> encodeFileOffset pos
- <> " " <> encodeToken t
-
-parseOfferFileSink :: AcceptResumeFile -> Parser (Maybe OfferFileSink)
-parseOfferFileSink (AcceptResumeFile (Passive _ t) f _) =
-    do "DCC SEND "
-       fn <- parseFileName
-       when (fn /= fileName f) $
-         fail "File name for accepting resume didn't match file name in offer."
-       space
-       (i, p) <- parseSocket
-       string (appendSpacedIfJust (encodeFileOffset <$> fileSize f))
-       space
-       string (encodeToken t)
-       endOfInput
-       return (Just (OfferFileSink t f i p))
-parseOfferFileSink _ = return Nothing
-
-encodeOfferFileSink :: OfferFileSink -> ByteString
-encodeOfferFileSink (OfferFileSink t (FileMetadata fn fs) i p) =
-    "DCC SEND "
- <> encodeFileName fn
- <> " " <> encodeSocket (i, p)
- <> appendSpacedIfJust (encodeFileOffset <$> fs)
- <> " " <> encodeToken t
-
-parseSocket :: Parser (IPv4, PortNumber)
-parseSocket =
-    do i <- parseIpBigEndian
-       space
-       p <- parseTcpPort
+       p <- tcpPort
        return (i, p)
 
-encodeSocket :: (IPv4, PortNumber) -> ByteString
-encodeSocket (i, p) = encodeIpBigEndian i <> " " <> encodeTcpPort p
+socketToBS :: (IPv4, PortNumber) -> ByteString
+socketToBS (i, p) = ipToBigEndianBS i <> " " <> tcpPortToBS p
 
-parseFileName :: Parser (Path Rel File)
-parseFileName = do name <- "\"" *> takeWhile1 (/= '"') <* "\""
-                       <|> takeWhile1 (/= ' ')
-                   case parseRelOrAbs (UTF8.toString name) of
-                     Nothing -> fail "Could not parse file name."
-                     Just path -> return path
-  where parseRelOrAbs n = parseRelFile n
-                      <|> filename <$> parseAbsFile n
+fileName :: Parser FileName
+fileName =
+    choice [ do "\""
+                name <- UTF8.toString <$> takeWhile1 (/= '"')
+                "\""
+                parseRelOrAbs QuotedRelFn QuotedAbsFn name
+           , do name <- UTF8.toString <$> takeWhile1 (/= ' ')
+                parseRelOrAbs SimpleRelFn SimpleAbsFn name
+           ]
+  where parseRelOrAbs rel abs n =
+            maybe (fail "Could not parse file name.") return
+                ( rel <$> parseRelFile n
+              <|> abs <$> parseAbsFile n )
 
-encodeFileName :: Path Rel File -> ByteString
-encodeFileName = pack . fromRelFile
+fileNameToBS :: FileName -> ByteString
+fileNameToBS (SimpleRelFn name) = UTF8.fromString (fromRelFile name)
+fileNameToBS (SimpleAbsFn name) = UTF8.fromString (fromAbsFile name)
+fileNameToBS (QuotedRelFn name) = "\"" <> UTF8.fromString (fromRelFile name) <> "\""
+fileNameToBS (QuotedAbsFn name) = "\"" <> UTF8.fromString (fromAbsFile name) <> "\""
 
-parseIpBigEndian :: Parser IPv4
-parseIpBigEndian = fromBigEndianIp <$> parseBoundedInteger 0 4294967295
+ipBigEndian :: Parser IPv4
+ipBigEndian = fromBigEndianIp <$> decimalInRange (0, 4294967295)
 
-encodeIpBigEndian :: IPv4 -> ByteString
-encodeIpBigEndian = pack . show . toBigEndianIp
+ipToBigEndianBS :: IPv4 -> ByteString
+ipToBigEndianBS = pack . show . toBigEndianIp
 
-parseTcpPort :: Parser PortNumber
-parseTcpPort = fromInteger <$> parseBoundedInteger 1 65535
+tcpPort :: Parser PortNumber
+tcpPort = fromInteger <$> decimalInRange (1, 65535)
 
-encodeTcpPort :: PortNumber -> ByteString
-encodeTcpPort = pack . show
+tcpPortToBS :: PortNumber -> ByteString
+tcpPortToBS = pack . show
 
-parseFileOffset :: Parser FileOffset
-parseFileOffset = FileOffset <$> decimal
+fileOffset :: Parser FileOffset
+fileOffset = FileOffset <$> decimal
 
-encodeFileOffset :: FileOffset -> ByteString
-encodeFileOffset = pack . show . toWord
+fileOffsetToBS :: FileOffset -> ByteString
+fileOffsetToBS = pack . show . toWord
 
-parseToken :: Parser Token
-parseToken = Token <$> takeByteString
+token :: Parser Token
+token = Token <$> takeByteString
 
-encodeToken :: Token -> ByteString
-encodeToken (Token t) = t
+tokenToBS :: Token -> ByteString
+tokenToBS (Token t) = t
 
-parseBoundedInteger :: Integer -> Integer -> Parser Integer
-parseBoundedInteger lower upper = do
+decimalInRange :: (Integer, Integer) -> Parser Integer
+decimalInRange (lower, upper) = do
     num <- decimal
     when (num < lower || num > upper) $
          fail ("Failed to parse " ++ show num ++ ", not in range [" ++
                show lower ++ ", " ++ show upper ++ "].")
     return num
-
-appendSpacedIfJust :: Maybe ByteString -> ByteString
-appendSpacedIfJust (Just x) = " " <> x
-appendSpacedIfJust Nothing = mempty
 
 fromBigEndianIp :: Integer -> IPv4
 fromBigEndianIp = fromHostAddress . byteSwap32 . fromIntegral

@@ -1,40 +1,32 @@
 {-| DCC command parsing and encoding module.
 
-    Example of parsing an offer file command:
+    Use the 'ToCtcp' and 'FromCtcp' type classes to convert between 'CTCPByteString's
+    and typed values.
 
-    > runParser parseOfferFile ctcpMessage
+    Try converting a 'CTCPByteString' to a 'DccSend' value:
 
-    Example of encoding an offer file command:
+    > (fromCtcp ctcpMessage) :: Either String DccSend
 
-    > encodeCtcp offerFile
+    Encoding a 'DccSend' value to a 'CTCPByteString':
+
+    > toCtcp (DccSend fileName ip port (Just fileSize))
 -}
 module Network.IRC.DCC (
   -- * Types
-  -- ** DCC service
-    CtcpCommand(..)
-  , Service(..)
+  -- ** DCC command conversion
+    ToCtcp(..)
+  , FromCtcp(..)
   -- ** Messaging commands (DCC CHAT)
-  , OpenChat(..)
-  , CloseChat(..)
+  , DccChat(..)
+  , DccClose(..)
   -- ** File Transfer commands (DCC SEND)
-  , OfferFile(..)
-  , TryResumeFile(..)
-  , AcceptResumeFile(..)
-  , OfferFileSink(..)
+  , DccSend(..)
+  , DccResume(..)
+  , DccAccept(..)
   -- *** Helper Types
-  , TransferType(..)
-  , FileMetadata(..)
-  , Token(..)
+  , FileName(..)
   , FileOffset
-  -- * DCC command parsing
-  , runParser
-  , parseService
-  , parseOpenChat
-  , parseCloseChat
-  , parseOfferFile
-  , parseTryResumeFile
-  , parseAcceptResumeFile
-  , parseOfferFileSink
+  , Token(..)
   ) where
 
-import Network.IRC.DCC.Internal
+import           Network.IRC.DCC.Internal

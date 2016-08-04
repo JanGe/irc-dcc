@@ -1,77 +1,83 @@
 -- | Common functions simplyfing the use of "Network.Socket.ByteString"
 module Network.Socket.ByteString.Extended
-  ( module Network.Socket
-  , module Network.Socket.ByteString
-  , Sink(..)
-  , Source(..)
-  , withActiveSocket
-  , withPassiveSocket
+  ( ConnectionType(..)
+  , Socket(..)
+  , S.PortNumber
+  , connect
+  , close
+  , recv
+  , sendAll
   , toNetworkByteOrder
   ) where
 
 import           Control.Error
-import           Control.Monad.IO.Class     (liftIO)
 import           Data.Binary.Put            (putWord32be, runPut)
 import           Data.ByteString.Char8      (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as Lazy (toStrict)
-import           Data.IP                    (IPv4, fromHostAddress,
-                                             toHostAddress)
-import           Network.Socket             hiding (recv, recvFrom, send,
-                                             sendTo)
-import           Network.Socket.ByteString
-import           System.Timeout
+import           Data.IP                    (IPv4, toHostAddress)
+import qualified Network.Socket             as S hiding (recv, recvFrom, send,
+                                                  sendTo)
+import qualified Network.Socket.ByteString  as S
 
-data Sink = Sink IPv4 PortNumber
+data ConnectionType
+  = Active IPv4 S.PortNumber (IO ())
+  -- ^ With callback when socket is ready
+  | Passive IPv4 (Maybe S.PortNumber) (S.PortNumber -> IO ())
+  -- ^ With callback when socket is ready
 
-data Source = Source IPv4 (Maybe PortNumber)
+data Socket
+  = ActiveSocket S.Socket
+  | PassiveSocket S.Socket S.PortNumber
 
--- | Run functions on socket when connected and close socket afterwards
-withActiveSocket :: Sink
-                 -> (PortNumber -> ExceptT String IO ())
-                 -- ^ Callback when socket is ready
-                 -> (Socket -> IO ())
-                 -- ^ Callback when socket is connected to server
-                 -> ExceptT String IO ()
-withActiveSocket (Sink i p) onListen onConnected = do
-    liftIO $ return withSocketsDo
-    sock <- liftIO $ socket AF_INET Stream defaultProtocol
-    onListen p
-    liftIO $ connect sock (SockAddrInet p (toHostAddress i))
-    liftIO $ onConnected sock
-    liftIO $ sClose sock
+_socket :: Socket -> S.Socket
+_socket (ActiveSocket sock)    = sock
+_socket (PassiveSocket sock _) = sock
 
-{- | Run functions on passive socket when listening and when connected and close
-     socket afterwards.
--}
-withPassiveSocket :: Source
-                  -> (PortNumber -> ExceptT String IO ())
-                  -- ^ Callback when socket is open and listening
-                  -> (Socket -> IO ())
-                  -- ^ Callback when client connected to socket
-                  -> ExceptT String IO ()
-withPassiveSocket (Source i maybeP) onListen onConnected = do
-    liftIO $ return withSocketsDo
-    sock <- liftIO $ openListenSocket (fromMaybe aNY_PORT maybeP)
-    p <- liftIO $ socketPort sock
-    onListen p
-    accepted <- liftIO $ timeout 10000000 $ accept sock
+connect :: ConnectionType -> IO Socket
+connect (Active ip port onListen) = do
+    sock <- connectTo ip port
+    onListen
+    waitForConnection ip sock
+connect (Passive ip maybePort onListen) = do
+    sock@(PassiveSocket _ port) <- listenOn maybePort
+    onListen port
+    waitForConnection ip sock
+
+close :: Socket -> IO ()
+close = S.close . _socket
+
+recv :: Socket -> Int -> IO ByteString
+recv = S.recv . _socket
+
+sendAll :: Socket -> ByteString -> IO ()
+sendAll = S.sendAll . _socket
+
+connectTo :: IPv4 -> S.PortNumber -> IO Socket
+connectTo ip port = S.withSocketsDo $ do
+    sock <- S.socket S.AF_INET S.Stream S.defaultProtocol
+    S.connect sock (S.SockAddrInet port (toHostAddress ip))
+    return $ ActiveSocket sock
+
+listenOn :: Maybe S.PortNumber -> IO Socket
+listenOn port = S.withSocketsDo $ do
+    sock  <- openListenSocket (fromMaybe S.aNY_PORT port)
+    port' <- S.socketPort sock
+    return $ PassiveSocket sock port'
+
+waitForConnection :: IPv4 -> Socket -> IO Socket
+waitForConnection _  sock@(ActiveSocket _)     = return sock -- Already connected
+waitForConnection ip (PassiveSocket sock port) = do
+    accepted <- S.accept sock
     case accepted of
-      Just (con, SockAddrInet _ client)
-        | client == toHostAddress i -> liftIO $ do onConnected con
-                                                   sClose con
-        | otherwise -> do liftIO $ sClose con
-                          throwE ( "Expected connection from host "
-                                ++ show (fromHostAddress client)
-                                ++ ", not from " ++ show i ++". Aborting…\n" )
-      _ -> throwE ( "Timeout when waiting for other party to connect on port "
-                 ++ show p ++ "…\n")
-    liftIO $ sClose sock
+      (con, S.SockAddrInet _ client)
+        | client == toHostAddress ip -> return $ PassiveSocket con port
+      _ -> fail ( "Connection did not come from " ++ show ip ++ " as expected." )
 
-openListenSocket :: PortNumber -> IO Socket
+openListenSocket :: S.PortNumber -> IO S.Socket
 openListenSocket p = do
-    sock <- socket AF_INET Stream defaultProtocol
-    bind sock (SockAddrInet p iNADDR_ANY)
-    listen sock 1
+    sock <- S.socket S.AF_INET S.Stream S.defaultProtocol
+    S.bind sock (S.SockAddrInet p S.iNADDR_ANY)
+    S.listen sock 1
     return sock
 
 -- | Converts numbers to a '32bit unsigned int' in network byte order.
