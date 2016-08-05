@@ -10,6 +10,7 @@ module Network.Socket.ByteString.Extended
   , toNetworkByteOrder
   ) where
 
+import           Control.Monad.IO.Class     (MonadIO, liftIO)
 import           Data.Binary.Put            (putWord32be, runPut)
 import           Data.ByteString.Char8      (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as Lazy (toStrict)
@@ -19,10 +20,10 @@ import qualified Network.Socket             as S hiding (recv, recvFrom, send,
                                                   sendTo)
 import qualified Network.Socket.ByteString  as S
 
-data ConnectionType
-  = Active !IPv4 !S.PortNumber (IO ())
+data ConnectionType m
+  = Active !IPv4 !S.PortNumber (m ())
   -- ^ With callback when socket is ready
-  | Passive !IPv4 !(Maybe S.PortNumber) (S.PortNumber -> IO ())
+  | Passive !IPv4 !(Maybe S.PortNumber) (S.PortNumber -> m ())
   -- ^ With callback when socket is ready
 
 data Socket
@@ -33,15 +34,15 @@ _socket :: Socket -> S.Socket
 _socket (ActiveSocket sock)    = sock
 _socket (PassiveSocket sock _) = sock
 
-connect :: ConnectionType -> IO Socket
+connect :: MonadIO m => ConnectionType m -> m Socket
 connect (Active ip port onListen) = do
-    sock <- connectTo ip port
+    sock <- liftIO $ connectTo ip port
     onListen
-    waitForConnection ip sock
+    liftIO $ waitForConnection ip sock
 connect (Passive ip maybePort onListen) = do
-    sock@(PassiveSocket _ port) <- listenOn maybePort
+    sock@(PassiveSocket _ port) <- liftIO $ listenOn maybePort
     onListen port
-    waitForConnection ip sock
+    liftIO $ waitForConnection ip sock
 
 close :: Socket -> IO ()
 close = S.close . _socket
