@@ -34,11 +34,11 @@ import           System.IO.Streams                  (OutputStream,
                                                      withFileAsOutputExt, write)
 
 data TransferType = FromStart
-                  | ResumeFrom FileOffset
+                  | ResumeFrom !FileOffset
 
-data FileTransfer = Download { _name           :: Path Rel File
-                             , _connectionType :: ConnectionType
-                             , _transferType   :: TransferType
+data FileTransfer = Download { _name           :: !(Path Rel File)
+                             , _connectionType :: !ConnectionType
+                             , _transferType   :: !TransferType
                              , _onChunk        :: FileOffset -> IO ()
                              }
 

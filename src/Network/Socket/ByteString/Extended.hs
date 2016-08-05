@@ -20,14 +20,14 @@ import qualified Network.Socket             as S hiding (recv, recvFrom, send,
 import qualified Network.Socket.ByteString  as S
 
 data ConnectionType
-  = Active IPv4 S.PortNumber (IO ())
+  = Active !IPv4 !S.PortNumber (IO ())
   -- ^ With callback when socket is ready
-  | Passive IPv4 (Maybe S.PortNumber) (S.PortNumber -> IO ())
+  | Passive !IPv4 !(Maybe S.PortNumber) (S.PortNumber -> IO ())
   -- ^ With callback when socket is ready
 
 data Socket
-  = ActiveSocket S.Socket
-  | PassiveSocket S.Socket S.PortNumber
+  = ActiveSocket !S.Socket
+  | PassiveSocket !S.Socket !S.PortNumber
 
 _socket :: Socket -> S.Socket
 _socket (ActiveSocket sock)    = sock
