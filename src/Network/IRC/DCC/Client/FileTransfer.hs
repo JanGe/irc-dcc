@@ -19,6 +19,7 @@ import           Network.IRC.DCC.Internal
 
 import           Control.Exception.Safe
 import           Control.Monad                      (unless)
+import           Control.Monad.IO.Class             (MonadIO, liftIO)
 import           Control.Monad.Trans.Class          (lift)
 import           Control.Monad.Trans.Reader         (ReaderT, ask)
 import           Data.ByteString.Char8              (ByteString, length, null)
@@ -30,17 +31,17 @@ import           Path                               (File, Path, Rel,
                                                      fromRelFile)
 import           Prelude                            hiding (length, null)
 import           System.IO                          (BufferMode (NoBuffering), IOMode (AppendMode, WriteMode))
-import           System.IO.Streams                  (OutputStream,
-                                                     withFileAsOutputExt, write)
+import           System.IO.Streams                  (OutputStream, write)
+import           System.IO.Streams.Lifted           (withFileAsOutputExt)
 
 data TransferType = FromStart
                   | ResumeFrom !FileOffset
 
-data FileTransfer = Download { _name           :: !(Path Rel File)
-                             , _connectionType :: !ConnectionType
-                             , _transferType   :: !TransferType
-                             , _onChunk        :: FileOffset -> IO ()
-                             }
+data FileTransfer m = Download { _name           :: !(Path Rel File)
+                               , _connectionType :: !(ConnectionType m)
+                               , _transferType   :: !TransferType
+                               , _onChunk        :: FileOffset -> m ()
+                               }
 
 -- | Accept a DCC file offer
 acceptFile :: DccSend
@@ -87,18 +88,19 @@ resumeFile (SendReverseServer name ip _ _) (AcceptReverse _ pos _) onListen onCh
 resumeFile _ _ _ _ =
     fail "You mixed the DCC and Reverse DCC workflow when calling 'resumeFile'."
 
-transfer :: FileTransfer -> IO ()
+transfer :: (MonadMask m, MonadIO m) => FileTransfer m -> m ()
 transfer Download {..} =
     bracket (connect _connectionType)
-            close
+            (liftIO . close)
             (download _name _transferType _onChunk)
 
-download :: Path Rel File
+download :: (MonadMask m, MonadIO m)
+         => Path Rel File
          -> TransferType
-         -> (FileOffset -> IO ())
+         -> (FileOffset -> m ())
           -- ^ Callback when a chunk of data was transfered
          -> Socket
-         -> IO ()
+         -> m ()
 download name FromStart onChunk =
     withFileAsOutputExt (fromRelFile name) WriteMode NoBuffering .
         stream 0 onChunk
@@ -106,22 +108,24 @@ download name (ResumeFrom pos) onChunk =
     withFileAsOutputExt (fromRelFile name) AppendMode NoBuffering .
         stream pos onChunk
 
-stream :: FileOffset
-       -> (FileOffset -> IO ())
+stream :: (MonadMask m, MonadIO m)
+       => FileOffset
+       -> (FileOffset -> m ())
        -> Socket
        -> OutputStream ByteString
-       -> IO ()
+       -> m ()
 stream pos onChunk sock h = do
-    buf <- recv sock (4096 * 1024)
+    buf <- liftIO $ recv sock (4096 * 1024)
     unless (null buf) $ do
         let len = fromIntegral $ length buf
         onChunk len
         let pos' = pos + len
         sendPosition sock pos'
-        Just buf `write` h
+        liftIO $ Just buf `write` h
         stream pos' onChunk sock h
 
-sendPosition :: Socket
+sendPosition :: (MonadMask m, MonadIO m)
+             => Socket
              -> FileOffset
-             -> IO ()
-sendPosition sock = sendAll sock . toNetworkByteOrder
+             -> m ()
+sendPosition sock = liftIO . sendAll sock . toNetworkByteOrder

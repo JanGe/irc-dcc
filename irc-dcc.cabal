@@ -24,6 +24,7 @@ library
                      , Network.IRC.DCC.Internal
                      , Network.IRC.DCC.Client.FileTransfer
   other-modules:       Network.Socket.ByteString.Extended
+                     , System.IO.Streams.Lifted
   -- other-extensions:
   build-depends:       base            >= 4.8      && < 5
                      , attoparsec      >= 0.13.0.1 && < 0.14
