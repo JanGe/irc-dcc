@@ -3,26 +3,28 @@
 
 module Network.IRC.DCC.Internal where
 
-import           Control.Applicative
-import           Control.Monad                    (when)
-import           Data.Attoparsec.ByteString.Char8 (Parser, choice, decimal,
-                                                   endOfInput, parseOnly, space,
-                                                   takeByteString, takeWhile1)
-import           Data.Binary                      (byteSwap32)
-import           Data.ByteString.Char8            (ByteString, pack, unwords)
-import qualified Data.ByteString.UTF8             as UTF8 (fromString, toString)
-import           Data.IP                          (IPv4, fromHostAddress,
-                                                   toHostAddress)
-import           Data.Monoid                      ((<>))
-import           Data.Word                        (Word64)
-import           Network.IRC.CTCP                 (CTCPByteString, decodeCTCP,
-                                                   encodeCTCP)
-import           Network.Socket                   (PortNumber)
-import           Path                             (Abs, File, Path, Rel,
-                                                   filename, fromAbsFile,
-                                                   fromRelFile, parseAbsFile,
-                                                   parseRelFile)
-import           Prelude                          hiding (abs, unwords)
+import           Control.Applicative                ((<|>))
+import           Control.Monad                      (when)
+import           Data.Attoparsec.ByteString.Char8   (Parser, choice, decimal,
+                                                     endOfInput, parseOnly,
+                                                     space, takeByteString,
+                                                     takeWhile1)
+import           Data.Binary                        (byteSwap32)
+import           Data.ByteString.Char8              (ByteString, pack, unwords)
+import qualified Data.ByteString.UTF8               as UTF8 (fromString,
+                                                             toString)
+import           Data.IP                            (IPv4, fromHostAddress,
+                                                     toHostAddress)
+import           Data.Monoid                        ((<>))
+import           Data.Word                          (Word64)
+import           Network.IRC.CTCP                   (CTCPByteString, decodeCTCP,
+                                                     encodeCTCP)
+import           Network.Socket.ByteString.Extended (PortNumber)
+import           Path                               (Abs, File, Path, Rel,
+                                                     filename, fromAbsFile,
+                                                     fromRelFile, parseAbsFile,
+                                                     parseRelFile)
+import           Prelude                            hiding (abs, unwords)
 
 -- | Types that can be converted to CTCP commands
 class ToCtcp a where

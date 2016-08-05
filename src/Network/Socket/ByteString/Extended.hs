@@ -10,11 +10,11 @@ module Network.Socket.ByteString.Extended
   , toNetworkByteOrder
   ) where
 
-import           Control.Error
 import           Data.Binary.Put            (putWord32be, runPut)
 import           Data.ByteString.Char8      (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as Lazy (toStrict)
 import           Data.IP                    (IPv4, toHostAddress)
+import           Data.Maybe                 (fromMaybe)
 import qualified Network.Socket             as S hiding (recv, recvFrom, send,
                                                   sendTo)
 import qualified Network.Socket.ByteString  as S
