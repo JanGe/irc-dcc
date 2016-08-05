@@ -23,8 +23,10 @@ module Network.IRC.DCC (
   , DccSend(..)
   , DccResume(..)
   , DccAccept(..)
+  , DccSendReverseClient(..)
   -- *** Helper Types
   , FileName(..)
+  , _fileName
   , FileOffset
   , Token(..)
   ) where

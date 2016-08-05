@@ -96,7 +96,7 @@ data DccSend
 
       > DCC SEND <fileName> <ip> <port> (<fileSize>)
   -}
-  = Send FileName !IPv4 !PortNumber !(Maybe FileOffset)
+  = Send !FileName !IPv4 !PortNumber !(Maybe FileOffset)
   {-| As part of the Reverse DCC protocol, sent by the server
 
       > DCC SEND <fileName> <ip> 0 <fileSize> <token>
@@ -278,11 +278,13 @@ instance FromCtcp DccSendReverseClient where
 
 data FileName
   = SimpleRelFn !(Path Rel File)
-  | SimpleAbsFn !(Path Abs File)
   -- ^ A file name without spaces
+  | SimpleAbsFn !(Path Abs File)
+  -- ^ A file path without spaces
   | QuotedRelFn !(Path Rel File)
-  | QuotedAbsFn !(Path Abs File)
   -- ^ A file name that can include spaces and will be quoted when serialized
+  | QuotedAbsFn !(Path Abs File)
+  -- ^ A file path that can include spaces and will be quoted when serialized
   deriving (Eq, Show)
 
 _fileName :: FileName -> Path Rel File
