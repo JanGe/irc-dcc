@@ -24,17 +24,17 @@ instance Arbitrary PortNumber where
 instance Arbitrary IPv4 where
   arbitrary = toIPv4 <$> replicateM 4 (choose (0, 255))
 
-instance Arbitrary FileName where
-  arbitrary = elements [ SimpleRelFn $(mkRelFile "filename")
-                       , SimpleRelFn $(mkRelFile "filename.txt")
-                       , SimpleRelFn $(mkRelFile "file\8195name.txt")
-                       , SimpleRelFn $(mkRelFile "\128110\127997")
-                       , SimpleAbsFn $(mkAbsFile "/home/user/dirname/filename.txt")
-                       , QuotedRelFn $(mkRelFile "filename.txt")
-                       , QuotedRelFn $(mkRelFile "file name.txt")
-                       , QuotedRelFn $(mkRelFile "file\8195 name.txt")
-                       , QuotedRelFn $(mkRelFile "\128110\127997")
-                       , QuotedAbsFn $(mkAbsFile "/home/user/dir name/filename.txt")
+instance Arbitrary Path where
+  arbitrary = elements [ Rel Simple $(mkRelFile "filename")
+                       , Rel Simple $(mkRelFile "filename.txt")
+                       , Rel Simple $(mkRelFile "file\8195name.txt")
+                       , Rel Simple $(mkRelFile "\128110\127997")
+                       , Abs Simple $(mkAbsFile "/home/user/dirname/filename.txt")
+                       , Rel Quoted $(mkRelFile "filename.txt")
+                       , Rel Quoted $(mkRelFile "file name.txt")
+                       , Rel Quoted $(mkRelFile "file\8195 name.txt")
+                       , Rel Quoted $(mkRelFile "\128110\127997")
+                       , Abs Quoted $(mkAbsFile "/home/user/dir name/filename.txt")
                        ]
 
 instance Arbitrary FileOffset where
@@ -91,21 +91,21 @@ spec = testSpec "DCC message serialization" $ do
     describe "File name" $ do
       describe "[SUCCESS]" $ do
         it "parse . encode == id" $ property $ \name ->
-          fileNameToBS name ~> fileName `parseSatisfies` (== name)
+          pathToBS name ~> path `parseSatisfies` (== name)
         it "At beginning of stream" $
-          pack "filename 122350" ~?> fileName
+          pack "filename 122350" ~?> path
             `leavesUnconsumed` pack " 122350"
 -- TODO Not sure exactly what to do with this yet. On Unix the whole thing
 --      could be a file name, while on windows it is obviously an absolute path
---                 it "File name from absoulte unix path" $
---                     ("c:\\Users\\user\\filename.txt" ~> fileName
+--                 it "File name from absolute unix path" $
+--                     ("c:\\Users\\user\\filename.txt" ~> path
 --                         `shouldParse` $(mkRelFile "filename.txt")
       describe "[FAILURE]" $ do
         it "ASCII filename with space" $
-          pack "file name.txt" ~?> fileName
+          pack "file name.txt" ~?> path
             `leavesUnconsumed` pack " name.txt"
         it "Not at beginning of stream" $
-          fileName `shouldFailOn` pack " filename"
+          path `shouldFailOn` pack " filename"
 
     describe "Token" $
       describe "[SUCCESS]" $

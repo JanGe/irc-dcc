@@ -15,7 +15,7 @@ module Network.IRC.DCC.Client.FileTransfer
     , transfer
     ) where
 
-import           Network.IRC.DCC.Internal
+import           Network.IRC.DCC
 
 import           Control.Exception.Safe
 import           Control.Monad                      (unless)
@@ -27,8 +27,8 @@ import           Network.Socket.ByteString.Extended (ConnectionType (..),
                                                      PortNumber, Socket, close,
                                                      connect, recv, sendAll,
                                                      toNetworkByteOrder)
-import           Path                               (File, Path, Rel,
-                                                     fromRelFile)
+import qualified Path                               as P (File, Path, Rel,
+                                                          fromRelFile)
 import           Prelude                            hiding (length, null)
 import           System.IO                          (BufferMode (NoBuffering), IOMode (AppendMode, WriteMode))
 import           System.IO.Streams                  (OutputStream, write)
@@ -37,7 +37,7 @@ import           System.IO.Streams.Lifted           (withFileAsOutputExt)
 data TransferType = FromStart
                   | ResumeFrom !FileOffset
 
-data FileTransfer m = Download { _name           :: !(Path Rel File)
+data FileTransfer m = Download { _fileName       :: !(P.Path P.Rel P.File)
                                , _connectionType :: !(ConnectionType m)
                                , _transferType   :: !TransferType
                                , _onChunk        :: FileOffset -> m ()
@@ -50,19 +50,7 @@ acceptFile :: DccSend
            -> (FileOffset -> IO ())
            -- ^ Callback when a chunk of data was transfered
            -> ReaderT (Maybe PortNumber) IO ()
-acceptFile (Send name ip port _) onListen onChunk = lift $
-    transfer Download { _name           = _fileName name
-                      , _connectionType = Active ip port (onListen port)
-                      , _transferType   = FromStart
-                      , _onChunk        = onChunk
-                      }
-acceptFile (SendReverseServer name ip _ _) onListen onChunk = do
-    port <- ask
-    lift $ transfer Download { _name           = _fileName name
-                             , _connectionType = Passive ip port onListen
-                             , _transferType   = FromStart
-                             , _onChunk        = onChunk
-                             }
+acceptFile = download FromStart
 
 -- | Accept a DCC file offer for a partially downloaded file
 resumeFile :: DccSend
@@ -72,41 +60,53 @@ resumeFile :: DccSend
            -> (FileOffset -> IO ())
            -- ^ Callback when a chunk of data was transferred
            -> ReaderT (Maybe PortNumber) IO ()
-resumeFile (Send name ip port _) (Accept _ _ pos) onListen onChunk = lift $
-    transfer Download { _name           = _fileName name
-                      , _connectionType = Active ip port (onListen port)
-                      , _transferType   = ResumeFrom pos
-                      , _onChunk        = onChunk
-                      }
-resumeFile (SendReverseServer name ip _ _) (AcceptReverse _ pos _) onListen onChunk = do
-    port <- ask
-    lift $ transfer Download { _name           = _fileName name
-                             , _connectionType = Passive ip port onListen
-                             , _transferType   = ResumeFrom pos
+resumeFile offer accept
+    | accept `matchesSend` offer =
+          download (ResumeFrom pos) offer
+    | otherwise = fail "You mixed the DCC and Reverse DCC workflow when calling 'resumeFile'."
+  where
+    pos = acceptedPosition accept
+
+download :: TransferType
+         -> DccSend
+         -> (PortNumber -> IO ())
+         -> (FileOffset -> IO ())
+         -> ReaderT (Maybe PortNumber) IO ()
+download tt (Send path ip port _) onListen onChunk =
+    lift $ transfer Download { _fileName       = fromPath path
+                             , _connectionType = Active ip port (onListen port)
+                             , _transferType   = tt
                              , _onChunk        = onChunk
                              }
-resumeFile _ _ _ _ =
-    fail "You mixed the DCC and Reverse DCC workflow when calling 'resumeFile'."
+download tt (SendReverseServer path ip _ _) onListen onChunk = do
+    port <- ask
+    lift $ transfer Download { _fileName       = fromPath path
+                             , _connectionType = Passive ip port onListen
+                             , _transferType   = tt
+                             , _onChunk        = onChunk
+                             }
 
 transfer :: (MonadMask m, MonadIO m) => FileTransfer m -> m ()
 transfer Download {..} =
     bracket (connect _connectionType)
             (liftIO . close)
-            (download _name _transferType _onChunk)
+            (streamToFile _fileName _transferType _onChunk)
 
-download :: (MonadMask m, MonadIO m)
-         => Path Rel File
-         -> TransferType
-         -> (FileOffset -> m ())
-          -- ^ Callback when a chunk of data was transfered
-         -> Socket
-         -> m ()
-download name FromStart onChunk =
-    withFileAsOutputExt (fromRelFile name) WriteMode NoBuffering .
-        stream 0 onChunk
-download name (ResumeFrom pos) onChunk =
-    withFileAsOutputExt (fromRelFile name) AppendMode NoBuffering .
-        stream pos onChunk
+streamToFile :: (MonadMask m, MonadIO m)
+             => P.Path P.Rel P.File
+             -> TransferType
+             -> (FileOffset -> m ())
+              -- ^ Callback when a chunk of data was transfered
+             -> Socket
+             -> m ()
+streamToFile name tt onChunk =
+    withFileAsOutputExt (P.fromRelFile name) (mode tt) NoBuffering .
+        stream (pos tt) onChunk
+  where
+    mode FromStart      = WriteMode
+    mode (ResumeFrom _) = AppendMode
+    pos FromStart       = 0
+    pos (ResumeFrom p)  = p
 
 stream :: (MonadMask m, MonadIO m)
        => FileOffset

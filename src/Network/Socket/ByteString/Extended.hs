@@ -22,17 +22,18 @@ import qualified Network.Socket.ByteString  as S
 
 data ConnectionType m
   = Active !IPv4 !S.PortNumber (m ())
-  -- ^ With callback when socket is ready
+  -- ^ Connects to other party on specified port. With callback when socket is ready.
   | Passive !IPv4 !(Maybe S.PortNumber) (S.PortNumber -> m ())
-  -- ^ With callback when socket is ready
+  -- ^ Binds to local port and waits for connection by other party. If no port number
+  -- is provided, one will be provided by the OS. With callback when socket is ready.
 
 data Socket
   = ActiveSocket !S.Socket
   | PassiveSocket !S.Socket !S.PortNumber
 
-_socket :: Socket -> S.Socket
-_socket (ActiveSocket sock)    = sock
-_socket (PassiveSocket sock _) = sock
+socket :: Socket -> S.Socket
+socket (ActiveSocket sock)    = sock
+socket (PassiveSocket sock _) = sock
 
 connect :: MonadIO m => ConnectionType m -> m Socket
 connect (Active ip port onListen) = do
@@ -45,13 +46,13 @@ connect (Passive ip maybePort onListen) = do
     liftIO $ waitForConnection ip sock
 
 close :: Socket -> IO ()
-close = S.close . _socket
+close = S.close . socket
 
 recv :: Socket -> Int -> IO ByteString
-recv = S.recv . _socket
+recv = S.recv . socket
 
 sendAll :: Socket -> ByteString -> IO ()
-sendAll = S.sendAll . _socket
+sendAll = S.sendAll . socket
 
 connectTo :: IPv4 -> S.PortNumber -> IO Socket
 connectTo ip port = S.withSocketsDo $ do
