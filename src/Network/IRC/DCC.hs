@@ -1,6 +1,6 @@
 {-| DCC command parsing and encoding module.
 
-    Use the 'ToCtcp' and 'FromCtcp' type classes to convert between 'CTCPByteString's
+    Use the 'CtcpCommand' type class to convert between 'CTCPByteString's
     and typed values.
 
     Try converting a 'CTCPByteString' to a 'DccSend' value:
@@ -9,7 +9,7 @@
 
     Encoding a 'DccSend' value to a 'CTCPByteString':
 
-    > toCtcp (DccSend fileName ip port (Just fileSize))
+    > toCtcp (Send fileName ip port (Just fileSize))
 -}
 module Network.IRC.DCC (
   -- * DCC command parsing and encoding
@@ -21,11 +21,13 @@ module Network.IRC.DCC (
   -- ** File Transfer commands (DCC SEND)
   , DccSend(..)
   , DccResume(..)
-  , resumeFromSend
   , DccAccept(..)
   , acceptedPosition
-  , matchesSend
   , DccSendReverseClient(..)
+  -- *** Constructors from other commands
+  , resumeFromSend
+  -- *** Protocol variant checks
+  , matchesSend
   -- ** Helper Types
   , Path(..)
   , fromPath
