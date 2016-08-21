@@ -5,7 +5,7 @@
 
     Try converting a 'CTCPByteString' to a 'DccSend' value:
 
-    > (fromCtcp ctcpMessage) :: Either String DccSend
+    > fromCtcp ctcpMessage :: Either String DccSend
 
     Encoding a 'DccSend' value to a 'CTCPByteString':
 
@@ -38,16 +38,14 @@ module Network.IRC.DCC (
 
 import           Network.IRC.DCC.Internal
 
+-- | Try resuming a file offer
 resumeFromSend :: DccSend -> FileOffset -> DccResume
 resumeFromSend (Send path' _ port _) pos =
     Resume path' port pos
 resumeFromSend (SendReverseServer path' _ _ token') pos =
     ResumeReverse path' pos token'
 
-acceptedPosition :: DccAccept -> FileOffset
-acceptedPosition (Accept _ _ pos)        = pos
-acceptedPosition (AcceptReverse _ pos _) = pos
-
+-- | Check if a 'DccSend' and a 'DccAccept' command are part of the same negotiation.
 matchesSend :: DccAccept -> DccSend -> Bool
 matchesSend (Accept pathA portA _) (Send pathS _ portS _) =
     pathS == pathA && portS == portA

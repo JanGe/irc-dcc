@@ -173,6 +173,10 @@ data DccAccept
   | AcceptReverse !Path !FileOffset !Token
   deriving (Eq, Show)
 
+acceptedPosition :: DccAccept -> FileOffset
+acceptedPosition (Accept _ _ pos)        = pos
+acceptedPosition (AcceptReverse _ pos _) = pos
+
 instance CtcpCommand DccAccept where
     toCtcp (Accept name port pos) = encodeCTCP $ unwords
         [ "DCC ACCEPT"
@@ -198,8 +202,7 @@ instance CtcpCommand DccAccept where
             <*> (spaced "0" *> spaced fileOffset)
             <*> spaced token
 
--- | Tell the server where to push to start a DCC file transfer
---   and push data to the specified location.
+-- | Tell the server to start a DCC file transfer and where it should send the data to.
 data DccSendReverseClient
   {-| As part of the Reverse DCC protocol, sent by the client
 

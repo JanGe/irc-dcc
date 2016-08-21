@@ -6,12 +6,14 @@
     file. See the
     <http://www.irchelp.org/irchelp/rfc/ctcpspec.html CTCP specification>.
 -}
-module Network.IRC.DCC.Client.FileTransfer
-    ( FileTransfer(..)
+module Network.IRC.DCC.Client.FileTransfer (
+    -- * Start/resume DCC file transfer
+      acceptFile
+    , resumeFile
+    -- * Custom DCC file transfer
+    , FileTransfer(..)
     , ConnectionType(..)
     , TransferType(..)
-    , acceptFile
-    , resumeFile
     , transfer
     ) where
 
@@ -37,6 +39,9 @@ import           System.IO.Streams.Lifted           (withFileAsOutputExt)
 data TransferType = FromStart
                   | ResumeFrom !FileOffset
 
+-- | A description of a file transfer.
+--   You can specify a callback that will be called with the number of bytes
+--   transfered for each chunk.
 data FileTransfer m = Download { _fileName       :: !(P.Path P.Rel P.File)
                                , _connectionType :: !(ConnectionType m)
                                , _transferType   :: !TransferType
