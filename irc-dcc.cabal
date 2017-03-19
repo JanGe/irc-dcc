@@ -1,5 +1,5 @@
 name:                irc-dcc
-version:             2.0.0
+version:             2.0.1
 synopsis:            A DCC message parsing and helper library for IRC clients
 description:         DCC (Direct Client-to-Client) is an IRC sub-protocol for
                      establishing and maintaining direct connections to
@@ -9,6 +9,7 @@ description:         DCC (Direct Client-to-Client) is an IRC sub-protocol for
                      more details.
 license:             MIT
 license-file:        LICENSE
+extra-source-files:  CHANGELOG.md
 homepage:            https://github.com/JanGe/irc-dcc
 bug-reports:         https://github.com/JanGe/irc-dcc/issues
 author:              Jan Gerlinger
@@ -28,9 +29,8 @@ library
   -- other-extensions:
   build-depends:       base            >= 4.8      && < 5
                      , attoparsec      >= 0.13.0.1 && < 0.14
-                     , binary          >= 0.7.5.0  && < 0.9
+                     , binary          >= 0.7.5.0  && < 0.10
                      , bytestring      >= 0.10.6.0 && < 0.11
-                     , errors          >= 2.1.2    && < 2.2
                      , io-streams      >= 1.3.5.0  && < 1.4
                      , iproute         >= 1.7.0    && < 1.8
                      , irc-ctcp        >= 0.1.3.0  && < 0.2

@@ -101,7 +101,7 @@ streamToFile :: (MonadMask m, MonadIO m)
              => P.Path P.Rel P.File
              -> TransferType
              -> (FileOffset -> m ())
-              -- ^ Callback when a chunk of data was transfered
+             -- ^ Callback when a chunk of data was transfered
              -> Socket
              -> m ()
 streamToFile name tt onChunk =
