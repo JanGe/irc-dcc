@@ -1,1 +1,3 @@
 resolver: nightly-2018-06-08
+extra-deps:
+  - network-2.7.0.0

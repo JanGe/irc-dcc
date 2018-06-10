@@ -16,8 +16,7 @@ import           Data.ByteString.Char8      (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as Lazy (toStrict)
 import           Data.IP                    (IPv4, toHostAddress)
 import           Data.Maybe                 (fromMaybe)
-import qualified Network.Socket             as S hiding (recv, recvFrom, send,
-                                                  sendTo)
+import qualified Network.Socket             as S hiding (recv)
 import qualified Network.Socket.ByteString  as S
 
 data ConnectionType m
@@ -62,7 +61,7 @@ connectTo ip port = S.withSocketsDo $ do
 
 listenOn :: Maybe S.PortNumber -> IO Socket
 listenOn port = S.withSocketsDo $ do
-    sock  <- openListenSocket (fromMaybe S.aNY_PORT port)
+    sock  <- openListenSocket (fromMaybe S.defaultPort port)
     port' <- S.socketPort sock
     return $ PassiveSocket sock port'
 
@@ -78,7 +77,9 @@ waitForConnection ip (PassiveSocket sock port) = do
 openListenSocket :: S.PortNumber -> IO S.Socket
 openListenSocket p = do
     sock <- S.socket S.AF_INET S.Stream S.defaultProtocol
-    S.bind sock (S.SockAddrInet p S.iNADDR_ANY)
+    let hints = S.defaultHints { S.addrFlags = [S.AI_PASSIVE, S.AI_NUMERICSERV] }
+    addrInfo : _ <- S.getAddrInfo (Just hints) Nothing (Just $ show p)
+    S.bind sock (S.addrAddress addrInfo)
     S.listen sock 1
     return sock
 
